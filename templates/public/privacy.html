@@ -1,29 +1,49 @@
 {% extends "public/base.html" %}
 
 {% block title %}Privacy Policy | Auto Tuck Shop{% endblock %}
-{% block description %}Privacy policy for Auto Tuck Shop.{% endblock %}
+{% block description %}How Auto Tuck Shop handles your shop's data — what we collect, who can see it, and what we never do with it.{% endblock %}
 
 {% block content %}
 <article class="policy-layout">
   <p class="eyebrow">Policy</p>
   <h1>Privacy Policy</h1>
-  <p class="policy-meta">Last updated: 25 May 2026</p>
+  <p class="policy-meta">Last updated: 2 June 2026</p>
 
-  <p>Auto Tuck Shop helps tuck shops record sales through WhatsApp. This policy explains what information we collect, how we use it, and how shop owners can contact us about their data.</p>
+  <p>Auto Tuck Shop is a sales recording tool for small shops in Zimbabwe. Your sales records are your business — this policy explains plainly what we collect, who can see it, and what we will never do with it.</p>
 
-  <h2>Information we collect</h2>
-  <p>We may collect phone numbers, shop names, WhatsApp messages sent to the service, product and sales information, language preferences, and operational records needed to run the service.</p>
+  <h2>Your data belongs to your shop</h2>
+  <p>The sales you record through Auto Tuck Shop are yours. We do not sell your data, share it with advertisers, or give it to any government authority, tax body, or third party unless we are compelled by a valid legal order that specifically names your shop. Even then, we will notify you before we comply, to the extent the law allows us to.</p>
+  <p>We are not connected to any government fiscalisation or tax reporting system. When you send a sale to the bot, that record stays between your shop and Auto Tuck Shop.</p>
 
-  <h2>How we use information</h2>
-  <p>We use this information to register shops, process WhatsApp text and voice messages, record sales, send confirmations and reports, support shop operators, protect the service, and improve reliability.</p>
+  <h2>What we collect</h2>
+  <p>To run the service, we collect:</p>
+  <ul>
+    <li>Your WhatsApp phone number and shop name</li>
+    <li>Sales messages and voice notes you send to the bot</li>
+    <li>Product names, quantities, and prices from those messages</li>
+    <li>Language preferences and setup choices</li>
+    <li>Technical records needed to keep the service running reliably</li>
+  </ul>
+  <p>We do not collect your personal name, identity documents, tax registration numbers, or any financial account information. Your shop name is whatever you choose to call it — we never ask who you are as a person. The only thing that could connect your records to you specifically is your phone number, which is no different from any other WhatsApp conversation you have.</p>
+
+  <h2>Who can see your data</h2>
+  <p>Your sales records are visible to:</p>
+  <ul>
+    <li><strong>You</strong> — through your daily reports and any summaries you request from the bot</li>
+    <li><strong>Auto Tuck Shop staff</strong> — only for the purpose of running and supporting the service. Staff access is not shared outside the team.</li>
+  </ul>
+  <p>Nobody else — no partner, no advertiser, no authority — has access to your shop's records unless we are legally compelled as described above.</p>
 
   <h2>Service providers</h2>
-  <p>Auto Tuck Shop uses trusted providers for WhatsApp messaging, hosting, AI parsing, voice transcription, media storage, and error monitoring. These providers process information only as needed to deliver the service.</p>
+  <p>We use a small number of trusted providers to run the service: WhatsApp messaging infrastructure (Meta), cloud hosting, AI message parsing, voice transcription, media storage, and error monitoring. Each provider handles only the data they need to do their job and is not permitted to use it for any other purpose.</p>
 
   <h2>Data retention</h2>
-  <p>We keep shop and sales records for as long as needed to provide the service, support shop owners, meet operational requirements, and resolve disputes. Shop owners can request deletion as described on the Data Deletion page.</p>
+  <p>We keep your shop's sales records for as long as you are using the service and for a reasonable period afterwards, in case you need historical data. You can request deletion at any time — see the <a href="{% url 'data_deletion' %}">Data Deletion page</a> for how to do that.</p>
+
+  <h2>Your rights</h2>
+  <p>You have the right to know what data we hold about your shop, to correct it if it is wrong, and to request that we delete it. To exercise any of these rights, contact us through the support channel provided to your shop.</p>
 
   <h2>Contact</h2>
-  <p>For privacy questions, contact the Auto Tuck Shop team through the support channel provided to your shop.</p>
+  <p>For any privacy questions, reach the Auto Tuck Shop team through the support channel provided when your shop was set up.</p>
 </article>
 {% endblock %}
