@@ -52,11 +52,17 @@ class Command(BaseCommand):
         relations = []
         for model in apps.get_models():
             for field in model._meta.get_fields():
-                if getattr(field, "remote_field", None) and getattr(field.remote_field, "model", None) == Product:
-                    # skip the Product model itself
-                    if model == Product:
-                        continue
-                    relations.append((model, field))
+                # only consider concrete ForeignKey fields (skip reverse relations)
+                if getattr(field, "remote_field", None) and not getattr(field, "auto_created", False):
+                    try:
+                        related_model = field.remote_field.model
+                    except Exception:
+                        related_model = None
+                    if related_model == Product:
+                        # skip the Product model itself
+                        if model == Product:
+                            continue
+                        relations.append((model, field))
 
         # Summarize impact
         summary = []
