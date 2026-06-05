@@ -1,6 +1,9 @@
 from django.core.management.base import BaseCommand, CommandError
+import json
+import os
 from django.db import transaction
 from django.apps import apps
+from django.utils import timezone
 
 
 class Command(BaseCommand):
@@ -84,6 +87,37 @@ class Command(BaseCommand):
             return
 
         # Perform the merge inside a transaction
+        if do_commit:
+            # create backups directory
+            backup_dir = os.path.join(os.getcwd(), "backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            timestamp = timezone.now().strftime("%Y%m%dT%H%M%S")
+            backup_path = os.path.join(
+                backup_dir, f"merge_{source.pk}_into_{target.pk}_{timestamp}.json"
+            )
+
+            backup = {
+                "source": {"id": source.pk, "name": source.name},
+                "target": {"id": target.pk, "name": target.name},
+                "relations": [],
+            }
+
+            # gather pre-merge data
+            for model, field in relations:
+                qs = model.objects.filter(**{f"{field.name}": source})
+                if qs.exists():
+                    # values() to serialize DB rows
+                    rows = list(qs.values())
+                    backup["relations"].append(
+                        {"model": model._meta.label, "field": field.name, "rows": rows}
+                    )
+
+            # write backup file
+            with open(backup_path, "w", encoding="utf-8") as f:
+                json.dump(backup, f, default=str, indent=2)
+
+            self.stdout.write(self.style.NOTICE(f"Backup written to {backup_path}"))
+
         with transaction.atomic():
             for model, field in relations:
                 qs = model.objects.filter(**{f"{field.name}": source})
