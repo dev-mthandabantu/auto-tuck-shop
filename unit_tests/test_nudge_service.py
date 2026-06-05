@@ -15,6 +15,8 @@ from apps.whatsapp.services.nudge_service import (
     _in_send_window,
     build_shop_context,
     maybe_send_nudges,
+    maybe_send_onboarding_followup,
+    maybe_send_reengagement,
 )
 
 
@@ -203,6 +205,114 @@ class MaybeSendNudgesTest(TransactionTestCase):
         with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)):
             result = _run(maybe_send_nudges())
         self.assertNotIn(self.company.id, result["sent"])
+
+
+def _mock_client(send_template_mock):
+    """Return a mock WhatsApp client with send_template_message replaced."""
+    from unittest.mock import MagicMock
+    client = MagicMock()
+    client.send_template_message = send_template_mock
+    return client
+
+
+class OnboardingFollowupTest(TransactionTestCase):
+
+    def setUp(self):
+        self.company = _make_company(
+            name="New Shop",
+            first_message_date=date.today() - timedelta(days=2),
+        )
+        self.profile = _make_user_profile(self.company, "+263771000200")
+
+    def test_sends_to_shop_with_no_sales(self):
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_onboarding_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup")
+        self.company.refresh_from_db()
+        self.assertTrue(self.company.onboarding_followup_sent)
+
+    def test_skips_shop_approved_today(self):
+        self.company.first_message_date = date.today()
+        self.company.save()
+        # No candidates found — no send call made, just check result
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_with_confirmed_sale(self):
+        from apps.sales.models import Sale
+        Sale.objects.create(company=self.company, total_amount=10, status="confirmed")
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_already_sent(self):
+        self.company.onboarding_followup_sent = True
+        self.company.save()
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+
+class ReengagementTest(TransactionTestCase):
+
+    def setUp(self):
+        self.company = _make_company(
+            name="Silent Shop",
+            first_message_date=date.today() - timedelta(days=10),
+        )
+        self.profile = _make_user_profile(self.company, "+263771000300")
+
+    def _make_sale(self, days_ago):
+        from apps.sales.models import Sale
+        Sale.objects.create(
+            company=self.company,
+            sale_timestamp=timezone.now() - timedelta(days=days_ago),
+            total_amount=10,
+            status="confirmed",
+        )
+
+    def test_sends_to_shop_silent_2_plus_days(self):
+        self._make_sale(days_ago=3)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.last_reengagement_date, date.today())
+        call_kwargs = send_mock.call_args
+        self.assertEqual(call_kwargs[0][1], "ats_reengagement")
+        self.assertIn("components", call_kwargs[1])
+
+    def test_skips_shop_active_yesterday(self):
+        self._make_sale(days_ago=1)
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_with_no_sales_history(self):
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_reengaged_within_7_days(self):
+        self._make_sale(days_ago=3)
+        self.company.last_reengagement_date = date.today() - timedelta(days=3)
+        self.company.save()
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_sends_to_shop_reengaged_over_7_days_ago(self):
+        self._make_sale(days_ago=3)
+        self.company.last_reengagement_date = date.today() - timedelta(days=8)
+        self.company.save()
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
 
 
 class OptOutHandlerTest(TransactionTestCase):

@@ -1,9 +1,14 @@
 import asyncio
 
 import sentry_sdk
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from apps.whatsapp.services.nudge_service import maybe_send_nudges
+from apps.whatsapp.services.nudge_service import (
+    maybe_send_nudges,
+    maybe_send_onboarding_followup,
+    maybe_send_reengagement,
+)
 
 
 class Command(BaseCommand):
@@ -26,3 +31,13 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"Nudges sent: {result['sent']}, skipped: {result['skipped']}"
             )
+
+            if settings.USE_TEMPLATE_MESSAGES:
+                followup = asyncio.run(maybe_send_onboarding_followup())
+                self.stdout.write(
+                    f"Onboarding followups sent: {followup['sent']}, skipped: {followup['skipped']}"
+                )
+                reengagement = asyncio.run(maybe_send_reengagement())
+                self.stdout.write(
+                    f"Reengagements sent: {reengagement['sent']}, skipped: {reengagement['skipped']}"
+                )

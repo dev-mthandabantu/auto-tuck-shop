@@ -292,3 +292,127 @@ async def maybe_send_nudges(now=None) -> dict:
             skipped.append(company.id)
 
     return {"sent": sent, "skipped": skipped}
+
+
+@sync_to_async
+def _load_onboarding_followup_candidates():
+    from apps.sales.models import Sale
+    from apps.core.models import Company
+    close_old_connections()
+    today = timezone.localdate()
+    companies = Company.objects.filter(
+        active=True,
+        first_message_date__isnull=False,
+        onboarding_followup_sent=False,
+    ).exclude(first_message_date=today)
+    result = []
+    for company in companies:
+        has_sale = Sale.objects.filter(company=company, status="confirmed").exists()
+        if not has_sale:
+            result.append(company)
+    return result
+
+
+@sync_to_async
+def _mark_onboarding_followup_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(onboarding_followup_sent=True)
+
+
+async def maybe_send_onboarding_followup() -> dict:
+    """Send ats_onboarding_followup template to approved shops that have never recorded a sale."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_onboarding_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        try:
+            for phone in phones:
+                await client.send_template_message(phone, "ats_onboarding_followup")
+            await _mark_onboarding_followup_sent(company)
+            logger.info("Onboarding followup sent to company %s", company.id)
+            sent.append(company.id)
+        except Exception:
+            logger.exception("Failed to send onboarding followup to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+@sync_to_async
+def _load_reengagement_candidates():
+    from apps.sales.models import Sale
+    from apps.core.models import Company
+    from django.db import models as django_models
+    close_old_connections()
+    today = timezone.localdate()
+    cutoff = today - timedelta(days=2)
+    seven_days_ago = today - timedelta(days=7)
+    companies = Company.objects.filter(active=True).filter(
+        django_models.Q(last_reengagement_date__isnull=True)
+        | django_models.Q(last_reengagement_date__lte=seven_days_ago)
+    )
+    result = []
+    for company in companies:
+        last_sale_date = (
+            Sale.objects.filter(company=company, status="confirmed")
+            .order_by("-sale_timestamp")
+            .values_list("sale_timestamp__date", flat=True)
+            .first()
+        )
+        if last_sale_date and last_sale_date <= cutoff:
+            result.append(company)
+    return result
+
+
+@sync_to_async
+def _get_owner_name(company) -> str:
+    from apps.core.models import UserProfile
+    close_old_connections()
+    profile = (
+        UserProfile.objects.filter(company=company, role=UserProfile.Role.OWNER, user__is_active=True)
+        .select_related("user")
+        .first()
+    )
+    if profile:
+        full_name = profile.user.get_full_name()
+        return full_name if full_name else company.name
+    return company.name
+
+
+@sync_to_async
+def _mark_reengagement_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(last_reengagement_date=timezone.localdate())
+
+
+async def maybe_send_reengagement() -> dict:
+    """Send ats_reengagement template to shops that have been silent for 2+ days."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_reengagement_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        owner_name = await _get_owner_name(company)
+        components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
+        try:
+            for phone in phones:
+                await client.send_template_message(phone, "ats_reengagement", components=components)
+            await _mark_reengagement_sent(company)
+            logger.info("Reengagement sent to company %s", company.id)
+            sent.append(company.id)
+        except Exception:
+            logger.exception("Failed to send reengagement to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}

@@ -11,6 +11,7 @@ from typing import Iterable
 logger = logging.getLogger(__name__)
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
@@ -454,7 +455,20 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
     wa_client = get_whatsapp_client()
     recipients = await sync_to_async(_company_recipients, thread_sensitive=True)(company)
     for phone in recipients:
-        if image_url:
+        if settings.USE_TEMPLATE_MESSAGES:
+            if len(snapshot.currency_revenues) <= 1:
+                revenue_str = format_price(snapshot.revenue, snapshot.currency)
+            else:
+                revenue_str = " + ".join(format_price(amt, cur) for cur, amt in snapshot.currency_revenues.items())
+            top_seller = snapshot.top_products[0][0] if snapshot.top_products else "—"
+            components = [{"type": "body", "parameters": [
+                {"type": "text", "text": snapshot.report_date.strftime("%d %b %Y")},
+                {"type": "text", "text": revenue_str},
+                {"type": "text", "text": str(snapshot.sales_count)},
+                {"type": "text", "text": top_seller},
+            ]}]
+            await wa_client.send_template_message(phone, "ats_daily_summary", components=components)
+        elif image_url:
             await wa_client.send_image(phone, image_url, caption=text_summary)
         else:
             await wa_client.send_message(phone, text_summary)

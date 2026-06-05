@@ -8,6 +8,8 @@ from django.contrib.auth.models import User
 from django.db import close_old_connections, IntegrityError
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from django.conf import settings
+
 from apps.whatsapp.services.webhook_handler import (
     ADMIN_PHONE_NUMBER,
     db_sync_to_async,
@@ -181,7 +183,11 @@ async def process_waitlist_button_action_async(
     if action == "approve":
         company, profile = await _approve_waitlist_entry(entry)
         await _send_response(sender, t("waitlist_admin.approved", phone=entry.phone_number, company=company.name))
-        await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
+        if settings.USE_TEMPLATE_MESSAGES:
+            from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            await get_whatsapp_client().send_template_message(entry.phone_number, "ats_approval_welcome")
+        else:
+            await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
     else:
         await _send_response(sender, t("waitlist_admin.rejected", phone=entry.phone_number))
         await _send_response(entry.phone_number, t("waitlist.rejected", lang=lang))
