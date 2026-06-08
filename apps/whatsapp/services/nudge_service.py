@@ -233,10 +233,12 @@ async def _send_nudge(company, message: str, cta_type: str = "text", lang: str =
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     from apps.whatsapp.services.webhook_handler import t
     phones = await _get_non_opted_out_phones(company)
+    owner_name = await _get_owner_name(company)
     client = get_whatsapp_client()
     for phone in phones:
         if settings.USE_TEMPLATE_MESSAGES:
-            await client.send_template_message(phone, "ats_daily_nudge")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
+            await client.send_template_message(phone, "ats_daily_nudge", components=components)
         elif cta_type == "button":
             await client.send_message_with_buttons(
                 phone,
@@ -381,8 +383,12 @@ def _get_owner_name(company) -> str:
     )
     if profile:
         full_name = profile.user.get_full_name()
-        return full_name if full_name else company.name
-    return company.name
+        if full_name:
+            return full_name
+    name = company.name
+    if not name or name.lower() == "unnamed shop":
+        return "there"
+    return name
 
 
 @sync_to_async
