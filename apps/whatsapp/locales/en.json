@@ -20,7 +20,7 @@
         "btn_reject": "Reject"
     },
     "approval": {
-        "welcome": "Welcome to Auto Tuck Shop! Your account has been approved.\n\nCompany: {company}\n\nYou can now send sales messages to track your sales. For example:\n'2 Mazoe $3 each'\nor: '5 bread R18 each, 2 sugar R40 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.\n\nAs an owner, you can also add assistants by sending:\n'add assistant +2637812345678'"
+        "welcome": "Welcome to Auto Tuck Shop! Your account has been approved.\n\nCompany: {company}\n\nYou can now send sales messages to track your sales. For example:\n'2 Mazoe $3 each'\nor: '5 bread R18 each, 2 sugar R40 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.\n\nAs an owner, you can also add assistants by sending:\n'add assistant +2637812345678'\n\n🌐 Learn more about us: https://auto-tuck-shop.fly.dev\n👥 Join our WhatsApp community: https://chat.whatsapp.com/G2HQ6f4Do3k3s7pLD3pnZI"
     },
     "error": {
         "processing_failed": "Sorry, something went wrong. Please try again."
