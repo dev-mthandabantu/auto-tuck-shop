@@ -428,31 +428,31 @@ h1 {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
 .team-photo-wrap {
-  width: 72px;
-  height: 72px;
+  width: 100%;
   flex-shrink: 0;
 }
 
 .team-photo {
-  width: 72px;
-  height: 72px;
-  border-radius: 12px;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
   object-fit: cover;
+  object-position: center top;
   border: 2px solid var(--ats-line);
   display: block;
 }
 
 .team-photo-fallback {
-  width: 72px;
-  height: 72px;
-  border-radius: 12px;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
   background: var(--ats-green-soft);
   color: var(--ats-green);
-  font-size: 1.1rem;
+  font-size: 2.5rem;
   font-weight: 900;
   align-items: center;
   justify-content: center;
