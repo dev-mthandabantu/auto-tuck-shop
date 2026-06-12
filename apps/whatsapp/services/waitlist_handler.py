@@ -122,13 +122,18 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
     else:
-        # Button send failed (likely outside 24h window). A template-based admin
-        # notification is needed for reliable delivery — see issue #199.
+        # Button send failed (likely outside 24h window). Fall back to ats_reengagement
+        # template — it will deliver reliably and prompt Brighton to check the admin panel.
+        # Replace with ats_admin_new_signup once that template is approved (#199).
         logger.warning(
-            "Admin waitlist notification failed for entry %s (%s) — 24h window likely closed. "
-            "Approve at https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/",
+            "Admin waitlist button notification failed for entry %s (%s) — falling back to template",
             entry.id,
             entry.phone_number,
+        )
+        from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+        components = [{"type": "body", "parameters": [{"type": "text", "text": "Brighton"}]}]
+        await get_whatsapp_client().send_template_message(
+            ADMIN_PHONE_NUMBER, "ats_reengagement", components=components
         )
 
 
