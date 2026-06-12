@@ -122,14 +122,14 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
     else:
-        # Button send failed (likely outside 24h window) — send plain text fallback so admin
-        # is at least notified to check the admin panel.
-        fallback = (
-            f"New waitlist request (approve at https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/):\n\n"
-            f"Phone: {entry.phone_number}\n"
-            f"Name: {entry.company_name or '(not given yet)'}"
+        # Button send failed (likely outside 24h window). A template-based admin
+        # notification is needed for reliable delivery — see issue #199.
+        logger.warning(
+            "Admin waitlist notification failed for entry %s (%s) — 24h window likely closed. "
+            "Approve at https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/",
+            entry.id,
+            entry.phone_number,
         )
-        await _send_response(ADMIN_PHONE_NUMBER, fallback)
 
 
 async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
