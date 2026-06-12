@@ -121,6 +121,15 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
     message_sid = await _send_response_with_buttons(ADMIN_PHONE_NUMBER, message, buttons)
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
+    else:
+        # Button send failed (likely outside 24h window) — send plain text fallback so admin
+        # is at least notified to check the admin panel.
+        fallback = (
+            f"New waitlist request (approve at https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/):\n\n"
+            f"Phone: {entry.phone_number}\n"
+            f"Name: {entry.company_name or '(not given yet)'}"
+        )
+        await _send_response(ADMIN_PHONE_NUMBER, fallback)
 
 
 async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
@@ -185,7 +194,8 @@ async def process_waitlist_button_action_async(
         await _send_response(sender, t("waitlist_admin.approved", phone=entry.phone_number, company=company.name))
         if settings.USE_TEMPLATE_MESSAGES:
             from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
-            await get_whatsapp_client().send_template_message(entry.phone_number, "ats_approval_welcome")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": company.name}]}]
+            await get_whatsapp_client().send_template_message(entry.phone_number, "ats_approval_welcome", components=components)
         else:
             await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
     else:
