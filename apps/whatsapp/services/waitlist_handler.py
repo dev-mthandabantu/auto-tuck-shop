@@ -223,6 +223,19 @@ async def handle_add_assistant(sender: str, text: str, user_profile, result) -> 
         return
     await _create_assistant(phone_number, user_profile.company)
     await _send_response(sender, t("assistant.added", lang=lang, phone=phone_number, company=user_profile.company.name))
+    if settings.USE_TEMPLATE_MESSAGES:
+        try:
+            from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            components = [{"type": "body", "parameters": [{"type": "text", "text": user_profile.company.name}]}]
+            sent = await get_whatsapp_client().send_template_message(
+                phone_number, "ats_assistant_welcome", components=components
+            )
+            if sent:
+                return
+        except Exception:
+            logger.exception("Failed to send assistant welcome template")
+
+    await _send_response(phone_number, t("assistant.welcome", lang=lang, company=user_profile.company.name))
 
 
 def handle_new_waitlist_entry(sender: str, text: str) -> None:

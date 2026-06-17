@@ -33,7 +33,8 @@
         "not_owner": "Sorry, only shop owners can add assistants. Contact the shop owner if you need to add team members.",
         "missing_phone": "I could not find a phone number. Please resend the full message, e.g., 'add assistant +2637812345678'",
         "already_registered": "The phone number {phone} is already registered to another user.",
-        "added": "Assistant added successfully!\n\nPhone: {phone}\nThey can now send sales messages for {company}."
+        "added": "Assistant added successfully!\n\nPhone: {phone}\nThey can now send sales messages for {company}.",
+        "welcome": "You have been added as an assistant for {company}.\n\nYou can now send sales messages to this number, just like the owner. For example:\n\n'2 Mazoe $3 each'\n'5 bread R18 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG."
     },
     "closing": {
         "setup_prompt": "One last thing — what time does your shop usually close? I will use this to send your daily summary automatically.",

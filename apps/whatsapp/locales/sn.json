@@ -33,7 +33,8 @@
         "not_owner": "Sorry, muridzi we shop ndiye anokwanisa kuwedzera mutengesi. Taura nemutengesi kana uchida rubatsiro.",
         "missing_phone": "Handina kuona nhamba yefoni. Tumira message yose zvakare, semuenzaniso: 'add assistant +2637812345678'",
         "already_registered": "Number iyi {phone} yagara yakaiswa.",
-        "added": "Mutengesi aiswa!\n\nPhone: {phone}\nAve ku kwanisa kurecorda zvatengwa mu {company}."
+        "added": "Mutengesi aiswa!\n\nPhone: {phone}\nAve ku kwanisa kurecorda zvatengwa mu {company}.",
+        "welcome": "Waiswa semubatsiri we {company}.\n\nZvino unogona kutumira mameseji ezvawatengesa panumber iyi, sezvinoita muridzi weshop. Semuenzaniso:\n\n'2 Mazoe $3 rimwe'\n'5 chingwa R18 chimwe'\n\nBot rinobvuma USD ($), Rand (R), uye ZiG."
     },
     "closing": {
         "setup_prompt": "Chimwe chinhu — shop yenyu inovhara nguvai? Ndichazvishandisa kutumira zvamunenge matengesa.",

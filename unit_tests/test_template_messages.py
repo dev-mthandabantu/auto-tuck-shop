@@ -3,6 +3,7 @@
 import asyncio
 from datetime import date, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -174,3 +175,79 @@ class ApprovalWelcomeTemplateTest(TransactionTestCase):
         send_template_mock.assert_not_called()
         # _send_response called twice: admin confirmation + shop owner welcome
         self.assertEqual(send_response_mock.call_count, 2)
+
+
+class AssistantWelcomeTemplateTest(TransactionTestCase):
+
+    def setUp(self):
+        self.company = _make_company("Assistant Shop")
+        self.owner = _make_owner(self.company, "+263771003003")
+
+    def test_sends_template_to_assistant_when_flag_enabled(self):
+        send_response_mock = AsyncMock()
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.waitlist_handler._get_profile_by_phone", new=AsyncMock(return_value=None)), \
+                 patch("apps.whatsapp.services.waitlist_handler._create_assistant", new=AsyncMock()), \
+                 patch("apps.whatsapp.services.waitlist_handler._send_response", new=send_response_mock), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.waitlist_handler import handle_add_assistant
+                parsed_result = SimpleNamespace(phone_number="+263771004004")
+                await handle_add_assistant("+263771003003", "add assistant +263771004004", self.owner, parsed_result)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        self.assertEqual(send_template_mock.call_args[0][0], "+263771004004")
+        self.assertEqual(send_template_mock.call_args[0][1], "ats_assistant_welcome")
+        self.assertEqual(
+            send_template_mock.call_args[1]["components"],
+            [{"type": "body", "parameters": [{"type": "text", "text": "Assistant Shop"}]}],
+        )
+        self.assertEqual(send_response_mock.call_count, 1)
+
+    def test_sends_localized_fallback_to_assistant_when_templates_disabled(self):
+        send_response_mock = AsyncMock()
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.waitlist_handler._get_profile_by_phone", new=AsyncMock(return_value=None)), \
+                 patch("apps.whatsapp.services.waitlist_handler._create_assistant", new=AsyncMock()), \
+                 patch("apps.whatsapp.services.waitlist_handler._send_response", new=send_response_mock), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = False
+                from apps.whatsapp.services.waitlist_handler import handle_add_assistant
+                parsed_result = SimpleNamespace(phone_number="+263771005005")
+                await handle_add_assistant("+263771003003", "add assistant +263771005005", self.owner, parsed_result)
+
+        _run(_run_test())
+        send_template_mock.assert_not_called()
+        self.assertEqual(send_response_mock.call_count, 2)
+        assistant_call = send_response_mock.call_args_list[1]
+        self.assertEqual(assistant_call.args[0], "+263771005005")
+        self.assertIn("assistant for Assistant Shop", assistant_call.args[1])
+
+    def test_falls_back_to_localized_message_when_template_send_fails(self):
+        send_response_mock = AsyncMock()
+        send_template_mock = AsyncMock(return_value=False)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.waitlist_handler._get_profile_by_phone", new=AsyncMock(return_value=None)), \
+                 patch("apps.whatsapp.services.waitlist_handler._create_assistant", new=AsyncMock()), \
+                 patch("apps.whatsapp.services.waitlist_handler._send_response", new=send_response_mock), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.waitlist_handler import handle_add_assistant
+                parsed_result = SimpleNamespace(phone_number="+263771006006")
+                await handle_add_assistant("+263771003003", "add assistant +263771006006", self.owner, parsed_result)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        self.assertEqual(send_response_mock.call_count, 2)
+        assistant_call = send_response_mock.call_args_list[1]
+        self.assertEqual(assistant_call.args[0], "+263771006006")
+        self.assertIn("assistant for Assistant Shop", assistant_call.args[1])
