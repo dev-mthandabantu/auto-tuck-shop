@@ -23,6 +23,7 @@ Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or vo
 |---|---|---|
 | Brighton | Tech lead, repo owner | @dev-thandabantu |
 | Madrena | Junior developer | @dev-mthandabantu |
+| Jasper | Intern — generalist developer | @dev-jaspher |
 | Bradley | Field/business, pilot shop relationships | @bradleychibuwe105-coder |
 
 ## Current phase
