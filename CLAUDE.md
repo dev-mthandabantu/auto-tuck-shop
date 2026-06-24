@@ -43,46 +43,27 @@ gh issue edit <number> --add-project "Auto Tuck Shop — Backlog"
 
 Before starting any task, read the relevant context:
 
-- **Architecture, data model, flows, async model:** wiki (see below)
-- **Pilot launch sequence and success metrics:** wiki (see below)
-- **All external service integrations:** wiki (see below)
+- **Architecture, data model, flows, async model:** `docs/Architecture.md`
+- **Pilot launch sequence and success metrics:** `docs/Pilot-Launch.md`
+- **All external service integrations:** `docs/Integrations.md`
 - **Key service entry points:** `apps/whatsapp/services/` — webhook_handler (main entry), sale_handler, waitlist_handler, business_reports, nudge_service, media_handler, message_parser, report_card, whatsapp_client
 - **LLM system prompt (tune for parsing improvements):** `services/openrouter/prompts.py`
 - **User-facing strings (EN + Shona):** `apps/whatsapp/locales/en.json`, `sn.json`
 - **Unit tests:** `python manage.py test unit_tests`
 - **Staging integration tests (manual only):** `python -m pytest tests/ -x` (requires `.env.staging`) — not run in CI, see #82
 
-## Working with the wiki
+## Docs index
 
-The wiki is a separate git repo. Always clone it locally rather than fetching URLs — it's faster and you can write back to it.
-
-```bash
-# Clone once per session (safe to re-run; git will error if already cloned, just cd in)
-# On Windows the Bash /tmp maps to C:\Users\User\AppData\Local\Temp — use that path directly
-git clone https://github.com/aakitech/auto-tuck-shop.wiki.git /c/Users/User/AppData/Local/Temp/ats-wiki
-```
-
-> **Windows note:** `/tmp/ats-wiki` is unreliable in this environment because the shell CWD resets between Bash invocations. Always use the full Windows-style path `/c/Users/User/AppData/Local/Temp/ats-wiki` for `git add`, `git commit`, and `git push`, or run those commands via Python subprocess with `cwd='C:/Users/User/AppData/Local/Temp/ats-wiki'`.
-
-Pages and what they cover:
+Documentation lives in `docs/` in this repo. Read the relevant file before starting any task. Update docs in the same PR as any behaviour change.
 
 | File | Content |
 |------|---------|
-| `Architecture.md` | Django apps, data model, URL structure, message pipeline, flows, async model |
-| `Features.md` | User-facing features: sale recording, daily reports, onboarding, queries |
-| `Integrations.md` | Meta WhatsApp, OpenRouter, ElevenLabs, R2, Fly.io, Sentry |
-| `Deployment.md` | Environments, deploy workflow, env vars, migrations, health check |
-| `Pilot-Launch.md` | Pilot success metrics and review cadence |
-| `Home.md` | Overview and quick links |
-
-**Reading:** `Read /tmp/ats-wiki/Architecture.md` etc. — no WebFetch needed.
-
-**Writing:** Edit files in `/tmp/ats-wiki`, then:
-```bash
-cd /tmp/ats-wiki && git add <file> && git commit -m "docs: ..." && git push origin master
-```
-
-**When to update:** Any time a feature changes behaviour, update the relevant wiki page in the same PR or immediately after. Don't let it drift.
+| `docs/Architecture.md` | Django apps, data model, URL structure, message pipeline, flows, async model |
+| `docs/Features.md` | User-facing features: sale recording, daily reports, onboarding, queries |
+| `docs/Integrations.md` | Meta WhatsApp, OpenRouter, ElevenLabs, R2, Fly.io, Sentry |
+| `docs/Deployment.md` | Environments, deploy workflow, env vars, migrations, health check |
+| `docs/Pilot-Launch.md` | Pilot success metrics and review cadence |
+| `docs/Home.md` | Overview and quick links |
 
 ## Scope rule
 
