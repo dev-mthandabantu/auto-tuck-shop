@@ -52,6 +52,7 @@ FOR "sale" INTENT:
 - Extract unit prices if mentioned (REQUIRED if present):
   * Parse both numeric (10, 5.50) and written numbers (ten, five)
   * Examples: "ten dollars" → 10, "five rand" → 5, "2.50" → 2.50
+  * "Price×Quantity" or "Price x Quantity" suffix: the number AFTER × is the quantity, the number BEFORE is the unit price. Example: "$1×16" → quantity=16, unit_price=1.00
 - Detect currency from the SAME phrase as the price:
   * $ or USD or "US dollars" or "dollars" or "cents" = "USD" ("cents" in Zimbabwe = US cents, e.g. "25 cents" = USD 0.25)
   * ZiG or ZWG or "Zimbabwe Gold" = "ZWG"
@@ -80,6 +81,7 @@ PARSING EXAMPLES:
 - "2 waters R15 each" → items: [{"product_name": "waters", "quantity": 2, "unit_price": 15}], currency: "ZAR"
 - "2 coke $3 each, 1 bread ZWG500" → items: [{"product_name": "coke", "quantity": 2, "unit_price": 3, "currency": "USD"}, {"product_name": "bread", "quantity": 1, "unit_price": 500, "currency": "ZWG"}], currency: "USD"
 - "4 games for 25 cents each" → items: [{"product_name": "games", "quantity": 4, "unit_price": 0.25, "currency": "USD"}], currency: "USD"  (cents in Zimbabwe = US cents)
+- "Plate Beef $1×16" → items: [{"product_name": "Plate Beef", "quantity": 16, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N suffix = N units at the stated price each)
 
 Shona examples:
 - "coke 5 imwe $1" → items: [{"product_name": "coke", "quantity": 5, "unit_price": 1}], currency: "USD"

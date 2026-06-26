@@ -154,7 +154,11 @@ class ApprovalWelcomeTemplateTest(TransactionTestCase):
                 await process_waitlist_button_action_async("approve", "+263770000001", original_message_sid="sid_abc")
 
         _run(_run_test())
-        send_template_mock.assert_called_once_with("+263771002002", "ats_approval_welcome")
+        send_template_mock.assert_called_once_with(
+            "+263771002002",
+            "ats_approval_welcome",
+            components=[{"type": "body", "parameters": [{"type": "text", "text": "New Shop Approved"}]}],
+        )
 
     def test_sends_free_form_on_approve_when_flag_disabled(self):
         send_response_mock = AsyncMock()

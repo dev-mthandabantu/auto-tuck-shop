@@ -57,7 +57,11 @@ def _apply_rule_based_price_hints(
         r"\bumwe\b",     # Shona: one/each (Class 8)
     )
     per_unit_pattern = re.compile(r"(?:" + "|".join(per_unit_tokens) + r")", re.IGNORECASE)
-    has_per_unit_marker = bool(per_unit_pattern.search(message)) or "@" in message
+    has_per_unit_marker = (
+        bool(per_unit_pattern.search(message))
+        or "@" in message
+        or bool(re.search(r"\d[×x]\d", message))  # e.g. $1×16 or $1x16
+    )
 
     adjusted: list[ParsedSaleItem] = []
     for item in parsed_items:

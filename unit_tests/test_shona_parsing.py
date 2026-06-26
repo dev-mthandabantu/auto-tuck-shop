@@ -201,3 +201,18 @@ class ShonaParsingTestCase(TestCase):
         result = self._parse("Hi")
         self.assertEqual(result.intent, "other")
         self.assertEqual(result.other_sub_intent, "greeting")
+
+    # ------------------------------------------------------------------
+    # ×-quantity suffix — regression for #190
+    # ------------------------------------------------------------------
+
+    def test_multiplication_sign_quantity(self):
+        """'Plate Beef $1×16' → 16 × Plate Beef @ $1.00 (× suffix = quantity)."""
+        result = self._parse("Plate Beef $1×16")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 16)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertEqual(result.currency, "USD")

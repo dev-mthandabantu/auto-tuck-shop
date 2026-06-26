@@ -12,7 +12,9 @@ class PublicLaunchPagesTestCase(TestCase):
         self.assertContains(response, "WhatsApp sales tracking for tuck shops in Zimbabwe.")
         self.assertContains(response, "auto_tuck_shop/img/app-icon.png")
         self.assertContains(response, "From message to sales record.")
-        self.assertNotContains(response, "pilot")
+        self.assertNotContains(response, "pilot program")
+        self.assertNotContains(response, "closed beta")
+        self.assertNotContains(response, "waitlist")
 
     def test_policy_pages_render_publicly(self):
         expected = {
