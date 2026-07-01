@@ -174,7 +174,7 @@ class MaybeSendNudgesTest(TransactionTestCase):
         async def _run_with_mocks():
             with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
                  patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
-                 patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=None)):
+                 patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
                 return await maybe_send_nudges()
         result = _run(_run_with_mocks())
         self.assertIn(self.company.id, result["sent"])

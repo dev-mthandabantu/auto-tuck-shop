@@ -229,18 +229,20 @@ def _get_non_opted_out_phones(company) -> list[str]:
     )
 
 
-async def _send_nudge(company, message: str, cta_type: str = "text", lang: str = "en") -> None:
+async def _send_nudge(company, message: str, cta_type: str = "text", lang: str = "en") -> bool:
+    """Send the nudge to every non-opted-out recipient. Returns True only if all sends succeeded."""
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     from apps.whatsapp.services.webhook_handler import t
     phones = await _get_non_opted_out_phones(company)
     owner_name = await _get_owner_name(company)
     client = get_whatsapp_client()
+    all_succeeded = True
     for phone in phones:
         if settings.USE_TEMPLATE_MESSAGES:
             components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
-            await client.send_template_message(phone, "ats_daily_nudge", components=components)
+            success = await client.send_template_message(phone, "ats_daily_nudge", components=components)
         elif cta_type == "button":
-            await client.send_message_with_buttons(
+            success = await client.send_message_with_buttons(
                 phone,
                 message,
                 buttons=[
@@ -249,7 +251,9 @@ async def _send_nudge(company, message: str, cta_type: str = "text", lang: str =
                 ],
             )
         else:
-            await client.send_message(phone, message)
+            success = await client.send_message(phone, message)
+        all_succeeded = all_succeeded and bool(success)
+    return all_succeeded
 
 
 def _in_send_window() -> bool:
@@ -285,12 +289,18 @@ async def maybe_send_nudges(now=None) -> dict:
             continue
 
         try:
-            await _send_nudge(company, cta["message"], cta_type=cta["cta_type"], lang=lang)
+            success = await _send_nudge(company, cta["message"], cta_type=cta["cta_type"], lang=lang)
+        except Exception:
+            logger.exception("Failed to send nudge to company %s", company.id)
+            skipped.append(company.id)
+            continue
+
+        if success:
             await _record_nudge_sent(company, today)
             logger.info("Nudge sent to company %s (stage %s)", company.id, company.nudge_stage)
             sent.append(company.id)
-        except Exception:
-            logger.exception("Failed to send nudge to company %s", company.id)
+        else:
+            logger.warning("Nudge send failed for company %s — not advancing nudge_stage", company.id)
             skipped.append(company.id)
 
     return {"sent": sent, "skipped": skipped}
