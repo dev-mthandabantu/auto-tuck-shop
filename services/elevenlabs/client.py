@@ -10,6 +10,25 @@ logger = logging.getLogger(__name__)
 
 ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/speech-to-text"
 
+# Biases transcription toward the currency/number vocabulary that shop owners
+# actually use when stating sale prices — confirmed via spike testing (#230)
+# to fix garbled decimal-price phrasing like "two dollars seventy" -> "Dola 70".
+# Only supported on scribe_v2 (scribe_v1 rejects the keyterms parameter).
+# Product names are appended by the caller (per-company, from the catalog) —
+# spike testing showed biasing toward the actual product being sold (e.g.
+# "Sasco") measurably improves accuracy beyond the currency vocabulary alone.
+PRICE_VOCABULARY_KEYTERMS = [
+    "dollars", "cents", "rand", "point", "each",
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    "eleven", "twelve", "thirteen", "fourteen", "fifteen",
+    "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+    "hundred",
+]
+
+# ElevenLabs allows up to 1000 keyterms; leave headroom for the fixed
+# vocabulary above plus per-company product names.
+MAX_KEYTERMS = 1000
+
 
 class ElevenLabsError(Exception):
     """Exception raised for Eleven Labs API errors."""
@@ -46,20 +65,24 @@ class ElevenLabsClient:
             "xi-api-key": self.api_key,
         }
 
-    async def transcribe_audio_from_url(self, audio_url: str) -> str:
+    async def transcribe_audio_from_url(self, audio_url: str, product_names: list[str] | None = None) -> str:
         """
         Transcribe audio from a URL using Eleven Labs Speech-to-Text API.
 
         Args:
             audio_url: HTTPS URL to the audio file
+            product_names: Optional shop product names to bias transcription
+                toward (e.g. so "Sasco" isn't misheard as "Sasuke")
 
         Returns:
             Transcribed text from the audio
         """
         async with track("elevenlabs_transcribe"):
+            keyterms = PRICE_VOCABULARY_KEYTERMS + (product_names or [])
             data = {
-                "model_id": "scribe_v1",
+                "model_id": "scribe_v2",
                 "cloud_storage_url": audio_url,
+                "keyterms": keyterms[:MAX_KEYTERMS],
             }
 
             @_retry_policy
@@ -90,13 +113,17 @@ class ElevenLabsClient:
                 logger.error(f"Unexpected Eleven Labs response format: {response_data}")
                 raise ElevenLabsError("Unexpected response format") from e
 
-    async def transcribe_audio(self, audio_data: bytes, filename: str) -> str:
+    async def transcribe_audio(
+        self, audio_data: bytes, filename: str, product_names: list[str] | None = None
+    ) -> str:
         """
         Transcribe audio using Eleven Labs Speech-to-Text API.
 
         Args:
             audio_data: Binary audio data
             filename: Filename with extension (e.g., "audio.ogg")
+            product_names: Optional shop product names to bias transcription
+                toward (e.g. so "Sasco" isn't misheard as "Sasuke")
 
         Returns:
             Transcribed text from the audio
@@ -105,8 +132,10 @@ class ElevenLabsClient:
             files = {
                 "file": (filename, audio_data),
             }
+            keyterms = PRICE_VOCABULARY_KEYTERMS + (product_names or [])
             data = {
-                "model_id": "scribe_v1",
+                "model_id": "scribe_v2",
+                "keyterms": keyterms[:MAX_KEYTERMS],
             }
 
             @_retry_policy
