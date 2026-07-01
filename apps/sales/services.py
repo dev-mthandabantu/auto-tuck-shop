@@ -28,11 +28,12 @@ class MissingPriceError(ValueError):
     pass
 
 
-class ParsedSaleItem(TypedDict):
+class ParsedSaleItem(TypedDict, total=False):
     product_name: str
     quantity: int
     unit_price: Decimal | None
     currency: str | None  # per-item currency; overrides top-level currency when set
+    price_ambiguous: bool  # True if a price was stated but total-vs-unit was unclear
 
 
 class SaleCreationResult(TypedDict):
@@ -119,8 +120,8 @@ def create_sale_from_parsed_items(
                     price=unit_price,
                     currency=item_currency,
                 )
-        else:
-            # Fall back to stored price with its currency
+        elif not item.get("price_ambiguous"):
+            # No price was mentioned at all — fall back to the stored price.
             price_with_currency = product.current_price_with_currency
             if price_with_currency:
                 unit_price, item_currency = price_with_currency

@@ -216,3 +216,19 @@ class ShonaParsingTestCase(TestCase):
         self.assertEqual(item["quantity"], 16)
         self.assertEqual(item["unit_price"], Decimal("1.00"))
         self.assertEqual(result.currency, "USD")
+
+    # ------------------------------------------------------------------
+    # ambiguous total-vs-unit price — regression for #220
+    # ------------------------------------------------------------------
+
+    def test_ambiguous_price_flagged_not_guessed(self):
+        """'4 games $1 sale' — no per-unit marker, qty > 1 — price is ambiguous
+        (total vs per-unit). Must be cleared and flagged rather than silently
+        treated as a $1-per-unit price or falling back to a stale stored price."""
+        result = self._parse("4 games $1 sale")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertEqual(item["quantity"], 4)
+        self.assertIsNone(item["unit_price"])
+        self.assertTrue(item.get("price_ambiguous"))

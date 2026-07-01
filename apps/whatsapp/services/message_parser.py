@@ -71,7 +71,10 @@ def _apply_rule_based_price_hints(
             qty = 1
 
         if item.get("unit_price") is not None and qty > 1 and not has_per_unit_marker:
-            item = {**item, "unit_price": None}
+            # A price was stated but it's ambiguous (total vs per-unit) — clear it
+            # rather than guess, but flag it so downstream code asks the owner to
+            # clarify instead of silently substituting a stored/catalog price.
+            item = {**item, "unit_price": None, "price_ambiguous": True}
 
         adjusted.append(item)
 
