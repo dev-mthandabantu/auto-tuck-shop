@@ -211,6 +211,19 @@ class WhatsAppWebhookView(View):
         sender = message.get("from", "")  # Plain number like '1234567890'
         message_type = message.get("type", "")
 
+        if not sender:
+            # No phone number in payload — likely a WhatsApp username/BSUID
+            # contact messaging us for the first time (Meta is rolling this
+            # out gradually). We have no way to look up or reply to a sender
+            # we can't identify by phone number yet, so drop it and get
+            # visibility via Sentry rather than creating a bad "+" record.
+            logger.warning(
+                "Inbound message %s (type=%s) has no phone number — "
+                "possible BSUID/username contact, dropping",
+                message_id, message_type,
+            )
+            return
+
         import sentry_sdk
         sentry_sdk.set_user({"id": sender, "username": sender})
 
