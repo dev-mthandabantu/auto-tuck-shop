@@ -352,8 +352,12 @@ class WhatsAppClient:
                 message_id = data.get("messages", [{}])[0].get("id", "")
                 logger.info(f"Sent template '{template_name}' to {to_number}: {message_id}")
                 return True
-            except Exception:
-                logger.exception(f"Failed to send template '{template_name}' to {to_number}")
+            except httpx.HTTPStatusError as e:
+                error_msg = f"{e.response.status_code} - {e.response.text}"
+                logger.exception(f"Failed to send template '{template_name}' to {to_number}: {error_msg}")
+                return False
+            except httpx.RequestError as e:
+                logger.exception(f"Meta WhatsApp request error sending template '{template_name}' to {to_number}: {e}")
                 return False
 
     async def mark_as_read(self, message_id: str) -> bool:
