@@ -60,7 +60,8 @@ def _apply_rule_based_price_hints(
     has_per_unit_marker = (
         bool(per_unit_pattern.search(message))
         or "@" in message
-        or bool(re.search(r"\d[×x]\d", message))  # e.g. $1×16 or $1x16
+        or bool(re.search(r"\d[×x]\d", message))  # e.g. $1×16 or $1x16 (price×quantity)
+        or bool(re.search(r"[×x]\s*\d", message))  # e.g. "plate ×2 $1" (×quantity, per-unit)
     )
 
     adjusted: list[ParsedSaleItem] = []

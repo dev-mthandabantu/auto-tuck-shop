@@ -232,3 +232,31 @@ class ShonaParsingTestCase(TestCase):
         self.assertEqual(item["quantity"], 4)
         self.assertIsNone(item["unit_price"])
         self.assertTrue(item.get("price_ambiguous"))
+
+    # ------------------------------------------------------------------
+    # ×N as a per-unit quantity marker, fraction/half portions — regression for #173
+    # ------------------------------------------------------------------
+
+    def test_product_x_quantity_before_separate_price(self):
+        """'Chicken plate ×2 $1' → 2 x Chicken plate @ $1.00 each (NOT $0.50 each —
+        ×N here marks per-unit quantity, distinct from the '$1×16' price×qty suffix)."""
+        result = self._parse("Chicken plate ×2 $1")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("chicken", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 2)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    def test_half_portion_is_distinct_product_not_fractional_quantity(self):
+        """'1/2 Plate beef $0.50' → quantity=1 of a half-portion product variant,
+        not quantity=0 (a half plate is a distinct catalog item, not a fraction
+        of a whole plate — SaleItem.quantity is a PositiveIntegerField)."""
+        result = self._parse("1/2 Plate beef $0.50")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 1)
+        self.assertEqual(item["unit_price"], Decimal("0.50"))

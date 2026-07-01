@@ -49,10 +49,14 @@ FOR "sale" INTENT:
   * Example: "five bread twenty rand each and five sugar fifty rand each" → 5 bread @ 20, 5 sugar @ 50
   * Example: "two cokes and three chips" → 2 cokes, 3 chips
 - If quantity not specified, assume 1
+- HALF/FRACTIONAL PORTIONS: A fraction before a product name ("1/2", "½", "half a", "half") is NOT a fractional quantity — it describes a smaller product variant, e.g. a half-plate instead of a full plate. Fold the fraction into the product name and set quantity to the whole number of portions ordered (usually 1), never a fractional quantity.
+  * Example: "1/2 Plate beef $0.50" → items: [{"product_name": "Plate beef (half)", "quantity": 1, "unit_price": 0.50}]
+  * Example: "2 half plates chicken $2 each" → items: [{"product_name": "Plate chicken (half)", "quantity": 2, "unit_price": 2}]
 - Extract unit prices if mentioned (REQUIRED if present):
   * Parse both numeric (10, 5.50) and written numbers (ten, five)
   * Examples: "ten dollars" → 10, "five rand" → 5, "2.50" → 2.50
   * "Price×Quantity" or "Price x Quantity" suffix: the number AFTER × is the quantity, the number BEFORE is the unit price. Example: "$1×16" → quantity=16, unit_price=1.00
+  * "Product ×N Price" — × directly before a number, placed between the product name and a separately-stated price — means N units at that price EACH (× here marks per-unit quantity, not a total). Example: "Chicken plate ×2 $1" → quantity=2, unit_price=1.00 (NOT $0.50 each)
 - Detect currency from the SAME phrase as the price:
   * $ or USD or "US dollars" or "dollars" or "cents" = "USD" ("cents" in Zimbabwe = US cents, e.g. "25 cents" = USD 0.25)
   * ZiG or ZWG or "Zimbabwe Gold" = "ZWG"
@@ -82,6 +86,8 @@ PARSING EXAMPLES:
 - "2 coke $3 each, 1 bread ZWG500" → items: [{"product_name": "coke", "quantity": 2, "unit_price": 3, "currency": "USD"}, {"product_name": "bread", "quantity": 1, "unit_price": 500, "currency": "ZWG"}], currency: "USD"
 - "4 games for 25 cents each" → items: [{"product_name": "games", "quantity": 4, "unit_price": 0.25, "currency": "USD"}], currency: "USD"  (cents in Zimbabwe = US cents)
 - "Plate Beef $1×16" → items: [{"product_name": "Plate Beef", "quantity": 16, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N suffix = N units at the stated price each)
+- "Chicken plate ×2 $1" → items: [{"product_name": "Chicken plate", "quantity": 2, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N before a separately-stated price = N units at that price each, not a total to split)
+- "1/2 Plate beef $0.50" → items: [{"product_name": "Plate beef (half)", "quantity": 1, "unit_price": 0.50, "currency": "USD"}], currency: "USD"  (half-portion is a distinct product, not quantity 0.5)
 
 Shona examples:
 - "coke 5 imwe $1" → items: [{"product_name": "coke", "quantity": 5, "unit_price": 1}], currency: "USD"
