@@ -222,9 +222,9 @@ class ShonaParsingTestCase(TestCase):
     # ------------------------------------------------------------------
 
     def test_ambiguous_price_flagged_not_guessed(self):
-        """'4 games $1 sale' — no per-unit marker, qty > 1 — price is ambiguous
-        (total vs per-unit). Must be cleared and flagged rather than silently
-        treated as a $1-per-unit price or falling back to a stale stored price."""
+        """'4 games $1 sale' — no per-unit marker, qty > 1, 1 % 4 ≠ 0 — price is
+        ambiguous (total vs per-unit). Must be cleared and flagged rather than
+        silently treated as a $1-per-unit price or falling back to a stale stored price."""
         result = self._parse("4 games $1 sale")
         self.assertEqual(result.intent, "sale")
         self.assertEqual(len(result.items), 1)
@@ -232,6 +232,25 @@ class ShonaParsingTestCase(TestCase):
         self.assertEqual(item["quantity"], 4)
         self.assertIsNone(item["unit_price"])
         self.assertTrue(item.get("price_ambiguous"))
+
+    def test_price_equals_qty_implies_one_dollar_each(self):
+        """'7 plates beef $7' → 7 × Plate Beef @ $1.00 (7 ÷ 7 = $1 exactly)."""
+        result = self._parse("7 plates beef $7")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 7)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    def test_price_divisible_by_qty_resolves_unit_price(self):
+        """'7 plates beef $14' → 7 × Plate Beef @ $2.00 (14 ÷ 7 = $2 exactly)."""
+        result = self._parse("7 plates beef $14")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertEqual(item["quantity"], 7)
+        self.assertEqual(item["unit_price"], Decimal("2.00"))
+        self.assertFalse(item.get("price_ambiguous"))
 
     # ------------------------------------------------------------------
     # ×N as a per-unit quantity marker, fraction/half portions — regression for #173

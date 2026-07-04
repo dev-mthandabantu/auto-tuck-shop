@@ -345,11 +345,17 @@ async def maybe_send_onboarding_followup() -> dict:
             skipped.append(company.id)
             continue
         try:
+            all_succeeded = True
             for phone in phones:
-                await client.send_template_message(phone, "ats_onboarding_followup")
-            await _mark_onboarding_followup_sent(company)
-            logger.info("Onboarding followup sent to company %s", company.id)
-            sent.append(company.id)
+                success = await client.send_template_message(phone, "ats_onboarding_followup")
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_onboarding_followup_sent(company)
+                logger.info("Onboarding followup sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Onboarding followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
         except Exception:
             logger.exception("Failed to send onboarding followup to company %s", company.id)
             skipped.append(company.id)
@@ -423,12 +429,103 @@ async def maybe_send_reengagement() -> dict:
         owner_name = await _get_owner_name(company)
         components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
         try:
+            all_succeeded = True
             for phone in phones:
-                await client.send_template_message(phone, "ats_reengagement", components=components)
-            await _mark_reengagement_sent(company)
-            logger.info("Reengagement sent to company %s", company.id)
-            sent.append(company.id)
+                success = await client.send_template_message(phone, "ats_reengagement", components=components)
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_reengagement_sent(company)
+                logger.info("Reengagement sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Reengagement send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
         except Exception:
             logger.exception("Failed to send reengagement to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+# Days after approval (Company.created_at) to send each zero-contact follow-up
+# attempt. Capped at 3 — a shop still silent after day 7 needs personal
+# outreach (see #149), not more automated attempts.
+_ZERO_CONTACT_FOLLOWUP_DAYS = (2, 5, 7)
+
+
+@sync_to_async
+def _load_zero_contact_followup_candidates():
+    from apps.core.models import Company
+    close_old_connections()
+    now = timezone.now()
+    candidates = []
+    for days in _ZERO_CONTACT_FOLLOWUP_DAYS:
+        cutoff_start = now - timedelta(days=days, hours=1)
+        cutoff_end = now - timedelta(days=days)
+        candidates.append(
+            Company.objects.filter(
+                active=True,
+                first_message_date__isnull=True,
+                created_at__gte=cutoff_start,
+                created_at__lt=cutoff_end,
+            )
+        )
+    seen_ids = set()
+    result = []
+    for qs in candidates:
+        for company in qs:
+            if company.id not in seen_ids and company.zero_contact_followup_count < len(_ZERO_CONTACT_FOLLOWUP_DAYS):
+                seen_ids.add(company.id)
+                result.append(company)
+    return result
+
+
+@sync_to_async
+def _mark_zero_contact_followup_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(
+        zero_contact_followup_count=company.zero_contact_followup_count + 1,
+        last_zero_contact_followup_date=timezone.localdate(),
+    )
+
+
+async def maybe_send_zero_contact_followup() -> dict:
+    """Send ats_zero_contact_followup template to shops that were approved but have
+    never sent a single message. Fires on day 2, 5, and 7 after approval, then stops —
+    still-silent shops after that need personal outreach (see #149), not more nudges."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_zero_contact_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    today = timezone.localdate()
+    for company in candidates:
+        if company.last_zero_contact_followup_date == today:
+            skipped.append(company.id)
+            continue
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        lang = await _company_owner_lang(company)
+        try:
+            all_succeeded = True
+            for phone in phones:
+                success = await client.send_template_message(
+                    phone, "ats_zero_contact_followup", language_code=lang
+                )
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_zero_contact_followup_sent(company)
+                logger.info(
+                    "Zero-contact followup sent to company %s (attempt %s/%s)",
+                    company.id, company.zero_contact_followup_count + 1, len(_ZERO_CONTACT_FOLLOWUP_DAYS),
+                )
+                sent.append(company.id)
+            else:
+                logger.warning("Zero-contact followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send zero-contact followup to company %s", company.id)
             skipped.append(company.id)
     return {"sent": sent, "skipped": skipped}

@@ -315,6 +315,91 @@ class ReengagementTest(TransactionTestCase):
         self.assertIn(self.company.id, result["sent"])
 
 
+class ZeroContactFollowupTest(TransactionTestCase):
+    """Shops approved but that have never sent a single message — regression for #234."""
+
+    def setUp(self):
+        self.company = _make_company(name="Never Started Shop")
+        self.profile = _make_user_profile(self.company, "+263771000400")
+
+    def _set_approved_days_ago(self, days):
+        approved_at = timezone.now() - timedelta(days=days, minutes=30)
+        Company.objects.filter(pk=self.company.pk).update(created_at=approved_at)
+        self.company.refresh_from_db()
+
+    def test_sends_on_day_2(self):
+        self._set_approved_days_ago(2)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                return await maybe_send_zero_contact_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with(
+            "+263771000400", "ats_zero_contact_followup", language_code="sn"
+        )
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.zero_contact_followup_count, 1)
+        self.assertEqual(self.company.last_zero_contact_followup_date, date.today())
+
+    def test_sends_on_day_5_and_7(self):
+        for days in (5, 7):
+            self._set_approved_days_ago(days)
+            self.company.last_zero_contact_followup_date = None
+            self.company.save()
+            send_mock = AsyncMock(return_value=True)
+            async def _run_test():
+                with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                    from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                    return await maybe_send_zero_contact_followup()
+            result = _run(_run_test())
+            self.assertIn(self.company.id, result["sent"])
+            self.company.refresh_from_db()
+
+    def test_skips_shop_that_has_sent_a_message(self):
+        self._set_approved_days_ago(2)
+        self.company.first_message_date = date.today()
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_not_on_a_scheduled_day(self):
+        self._set_approved_days_ago(3)  # day 3 — not in (2, 5, 7)
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_stops_after_3_attempts(self):
+        self._set_approved_days_ago(7)
+        self.company.zero_contact_followup_count = 3
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_does_not_double_send_same_day(self):
+        self._set_approved_days_ago(2)
+        self.company.last_zero_contact_followup_date = date.today()
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_does_not_advance_count_on_send_failure(self):
+        self._set_approved_days_ago(2)
+        send_mock = AsyncMock(return_value=False)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                return await maybe_send_zero_contact_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["skipped"])
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.zero_contact_followup_count, 0)
+
+
 class OptOutHandlerTest(TransactionTestCase):
     """Test that 'stop' sets nudge_opt_out on the UserProfile."""
 

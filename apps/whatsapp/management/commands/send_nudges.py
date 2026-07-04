@@ -8,6 +8,7 @@ from apps.whatsapp.services.nudge_service import (
     maybe_send_nudges,
     maybe_send_onboarding_followup,
     maybe_send_reengagement,
+    maybe_send_zero_contact_followup,
 )
 
 
@@ -40,4 +41,8 @@ class Command(BaseCommand):
                 reengagement = asyncio.run(maybe_send_reengagement())
                 self.stdout.write(
                     f"Reengagements sent: {reengagement['sent']}, skipped: {reengagement['skipped']}"
+                )
+                zero_contact = asyncio.run(maybe_send_zero_contact_followup())
+                self.stdout.write(
+                    f"Zero-contact followups sent: {zero_contact['sent']}, skipped: {zero_contact['skipped']}"
                 )

@@ -72,10 +72,19 @@ def _apply_rule_based_price_hints(
             qty = 1
 
         if item.get("unit_price") is not None and qty > 1 and not has_per_unit_marker:
-            # A price was stated but it's ambiguous (total vs per-unit) — clear it
-            # rather than guess, but flag it so downstream code asks the owner to
-            # clarify instead of silently substituting a stored/catalog price.
-            item = {**item, "unit_price": None, "price_ambiguous": True}
+            raw_price = item["unit_price"]
+            try:
+                raw_price_dec = Decimal(str(raw_price))
+                qty_dec = Decimal(qty)
+                if raw_price_dec % qty_dec == Decimal("0"):
+                    # Price divides exactly — stated price is a total, resolve to unit price.
+                    # e.g. "7 plates $7" → $1 each, "7 plates $14" → $2 each
+                    item = {**item, "unit_price": raw_price_dec / qty_dec}
+                else:
+                    # Non-divisible — genuinely ambiguous, clear and flag for rejection.
+                    item = {**item, "unit_price": None, "price_ambiguous": True}
+            except Exception:
+                item = {**item, "unit_price": None, "price_ambiguous": True}
 
         adjusted.append(item)
 

@@ -87,6 +87,8 @@ PARSING EXAMPLES:
 - "4 games for 25 cents each" → items: [{"product_name": "games", "quantity": 4, "unit_price": 0.25, "currency": "USD"}], currency: "USD"  (cents in Zimbabwe = US cents)
 - "Plate Beef $1×16" → items: [{"product_name": "Plate Beef", "quantity": 16, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N suffix = N units at the stated price each)
 - "Chicken plate ×2 $1" → items: [{"product_name": "Chicken plate", "quantity": 2, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N before a separately-stated price = N units at that price each, not a total to split)
+- "7 plates beef $7" → items: [{"product_name": "plates beef", "quantity": 7, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (price == qty → $1 each; the $7 is a total, not per-unit)
+- "7 plates beef $14" → items: [{"product_name": "plates beef", "quantity": 7, "unit_price": 2.00, "currency": "USD"}], currency: "USD"  (price divisible by qty → $2 each; the $14 is a total)
 - "1/2 Plate beef $0.50" → items: [{"product_name": "Plate beef (half)", "quantity": 1, "unit_price": 0.50, "currency": "USD"}], currency: "USD"  (half-portion is a distinct product, not quantity 0.5)
 
 Shona examples:
