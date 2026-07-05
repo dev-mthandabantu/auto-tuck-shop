@@ -252,6 +252,21 @@ class ShonaParsingTestCase(TestCase):
         self.assertEqual(item["unit_price"], Decimal("2.00"))
         self.assertFalse(item.get("price_ambiguous"))
 
+    def test_cents_price_per_unit_not_ambiguous(self):
+        """Regression: '3 chips $1.50' — a price with cents is essentially
+        never a stated total in this domain. Must resolve to $1.50 each with
+        NO ambiguity, matching the documented PARSING EXAMPLES entry in
+        prompts.py — the divisibility check (added for the #173 whole-number
+        cases above) must not override a correctly-parsed cents price just
+        because 1.50 % 3 != 0."""
+        result = self._parse("3 chips $1.50")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertIn("chips", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 3)
+        self.assertEqual(item["unit_price"], Decimal("1.50"))
+        self.assertFalse(item.get("price_ambiguous"))
+
     # ------------------------------------------------------------------
     # ×N as a per-unit quantity marker, fraction/half portions — regression for #173
     # ------------------------------------------------------------------
