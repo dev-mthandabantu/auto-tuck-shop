@@ -21,11 +21,13 @@ from apps.core.currencies import format_price
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale, SaleItem
 from apps.inventory.models import InventoryAdjustment
+from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
 
 
 LOW_STOCK_THRESHOLD = 5
 FALLBACK_SUMMARY_CUTOFF = time(21, 0)
+WHATSAPP_SERVICE_WINDOW = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -110,6 +112,18 @@ def _company_recipients(company: Company) -> list[str]:
         .distinct()
     )
     return phones or []
+
+
+def _within_service_window(phone: str) -> bool:
+    """True if `phone` sent an inbound WhatsApp message within the last 24
+    hours (Meta's customer-service window) — meaning free-form/image
+    messages are currently permitted for this recipient."""
+    cutoff = timezone.now() - WHATSAPP_SERVICE_WINDOW
+    return WhatsAppMessage.objects.filter(
+        phone_number=phone,
+        direction=WhatsAppMessage.Direction.INBOUND,
+        timestamp__gte=cutoff,
+    ).exists()
 
 
 def _day_bounds(day: datetime.date) -> tuple[datetime, datetime]:
@@ -455,7 +469,12 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
     wa_client = get_whatsapp_client()
     recipients = await sync_to_async(_company_recipients, thread_sensitive=True)(company)
     for phone in recipients:
+        use_template = False
         if settings.USE_TEMPLATE_MESSAGES:
+            in_window = await sync_to_async(_within_service_window, thread_sensitive=True)(phone)
+            use_template = not in_window
+
+        if use_template:
             if len(snapshot.currency_revenues) <= 1:
                 revenue_str = format_price(snapshot.revenue, snapshot.currency)
             else:

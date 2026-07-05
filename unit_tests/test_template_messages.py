@@ -8,8 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
 from django.test import TransactionTestCase
+from django.utils import timezone
 
 from apps.core.models import Company, UserProfile
+from apps.whatsapp.models import WhatsAppMessage
 
 
 def _run(coro):
@@ -67,7 +69,16 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         )
         return sale
 
-    def test_uses_template_when_flag_enabled(self):
+    def test_uses_template_when_flag_enabled_and_outside_window(self):
+        """No inbound message in the last 24h → outside service window → template path."""
+        msg = WhatsAppMessage.objects.create(
+            phone_number="+263771001001",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            company=self.company,
+        )
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(timestamp=timezone.now() - timedelta(hours=30))
+
         self._make_sale()
         send_template_mock = AsyncMock(return_value=True)
 
@@ -85,6 +96,41 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         self.assertEqual(call_args[0][1], "ats_daily_summary")
         components = call_args[1]["components"]
         self.assertEqual(len(components[0]["parameters"]), 4)
+
+    def test_uses_image_when_flag_enabled_but_within_window(self):
+        """Recent inbound message (<24h) + flag enabled → still image/text, NOT template.
+        Regression test for #237.
+        """
+        msg = WhatsAppMessage.objects.create(
+            phone_number="+263771001001",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            company=self.company,
+        )
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(timestamp=timezone.now() - timedelta(hours=2))
+
+        self._make_sale()
+        send_image_mock = AsyncMock(return_value=True)
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.business_reports.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.business_reports.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock, send_image_mock=send_image_mock)), \
+                 patch("apps.whatsapp.services.business_reports.upload_report_image", return_value="https://cdn.example.com/report.png"):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                import apps.whatsapp.services.report_card as rc
+                original = rc.generate_stat_card
+                rc.generate_stat_card = lambda *a, **kw: b"fakepng"
+                try:
+                    from apps.whatsapp.services.business_reports import send_daily_summary
+                    return await send_daily_summary(self.company)
+                finally:
+                    rc.generate_stat_card = original
+
+        recipients = _run(_run_test())
+        self.assertIn("+263771001001", recipients)
+        send_image_mock.assert_called_once()
+        send_template_mock.assert_not_called()
 
     def test_uses_image_when_flag_disabled(self):
         self._make_sale()
