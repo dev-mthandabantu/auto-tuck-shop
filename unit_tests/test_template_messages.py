@@ -97,6 +97,38 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         components = call_args[1]["components"]
         self.assertEqual(len(components[0]["parameters"]), 4)
 
+    def test_template_revenue_uses_actual_sale_currency_not_company_default(self):
+        """Regression test for #246 — the template's revenue parameter must
+        reflect the sale's actual currency (ZAR), not the company's
+        configured default (USD)."""
+        msg = WhatsAppMessage.objects.create(
+            phone_number="+263771001001",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            company=self.company,
+        )
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(timestamp=timezone.now() - timedelta(hours=30))
+
+        self._make_sale(product_name="Bread", qty=3, price=Decimal("18.00"))
+        from apps.sales.models import SaleItem
+        SaleItem.objects.filter(sale__company=self.company).update(currency="ZAR")
+
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.business_reports.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.business_reports.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.business_reports import send_daily_summary
+                return await send_daily_summary(self.company)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        components = send_template_mock.call_args[1]["components"]
+        revenue_param = components[0]["parameters"][1]["text"]
+        self.assertIn("R", revenue_param)
+        self.assertNotIn("$", revenue_param)
+
     def test_uses_image_when_flag_enabled_but_within_window(self):
         """Recent inbound message (<24h) + flag enabled → still image/text, NOT template.
         Regression test for #237.
