@@ -16,6 +16,27 @@ logger = logging.getLogger(__name__)
 # CTA definitions: key, eligible_ctas function gate, param-builder
 _ONBOARDING_DAYS = 14
 
+# Shona-language template names — submitted to Meta as distinct template
+# names rather than a language variant of the English template (Meta
+# normally supports one template name with multiple language variants
+# selected via language_code, but these were submitted as separate names —
+# see #235). Falls back to the English template name if no Shona variant
+# has been submitted yet for a given template.
+_SHONA_TEMPLATE_NAMES = {
+    "ats_daily_nudge": "_ats_daily_nudge_shona_version",
+    "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
+    "ats_reengagement": "ats_reengagement_shona_version",
+    "ats_daily_summary": "ats_daily_summary_shona_version",
+}
+
+
+def _template_name_for_lang(base_name: str, lang: str) -> str:
+    """Return the Shona-named template variant if lang is Shona and one has
+    been submitted, else the base (English) template name."""
+    if lang == "sn":
+        return _SHONA_TEMPLATE_NAMES.get(base_name, base_name)
+    return base_name
+
 
 def _compute_streak(company) -> int:
     """Count consecutive days with at least one confirmed sale ending today."""
@@ -240,7 +261,8 @@ async def _send_nudge(company, message: str, cta_type: str = "text", lang: str =
     for phone in phones:
         if settings.USE_TEMPLATE_MESSAGES:
             components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
-            success = await client.send_template_message(phone, "ats_daily_nudge", components=components)
+            template_name = _template_name_for_lang("ats_daily_nudge", lang)
+            success = await client.send_template_message(phone, template_name, components=components)
         elif cta_type == "button":
             success = await client.send_message_with_buttons(
                 phone,
@@ -344,10 +366,12 @@ async def maybe_send_onboarding_followup() -> dict:
         if not phones:
             skipped.append(company.id)
             continue
+        lang = await _company_owner_lang(company)
+        template_name = _template_name_for_lang("ats_onboarding_followup", lang)
         try:
             all_succeeded = True
             for phone in phones:
-                success = await client.send_template_message(phone, "ats_onboarding_followup")
+                success = await client.send_template_message(phone, template_name)
                 all_succeeded = all_succeeded and bool(success)
             if all_succeeded:
                 await _mark_onboarding_followup_sent(company)
@@ -428,10 +452,12 @@ async def maybe_send_reengagement() -> dict:
             continue
         owner_name = await _get_owner_name(company)
         components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
+        lang = await _company_owner_lang(company)
+        template_name = _template_name_for_lang("ats_reengagement", lang)
         try:
             all_succeeded = True
             for phone in phones:
-                success = await client.send_template_message(phone, "ats_reengagement", components=components)
+                success = await client.send_template_message(phone, template_name, components=components)
                 all_succeeded = all_succeeded and bool(success)
             if all_succeeded:
                 await _mark_reengagement_sent(company)

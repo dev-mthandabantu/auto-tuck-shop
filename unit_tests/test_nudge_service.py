@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.core.models import Company, UserProfile
@@ -13,6 +13,7 @@ from apps.whatsapp.services.nudge_service import (
     _compute_streak,
     _eligible_ctas,
     _in_send_window,
+    _template_name_for_lang,
     build_shop_context,
     maybe_send_nudges,
     maybe_send_onboarding_followup,
@@ -47,6 +48,34 @@ def _make_user_profile(company, phone, opted_out=False):
         role=UserProfile.Role.OWNER, nudge_opt_out=opted_out,
     )
     return profile
+
+
+class TemplateNameForLangTest(TestCase):
+    """Direct tests for _template_name_for_lang — no DB needed. Regression
+    for #235: these are distinct template NAMES submitted to Meta, not
+    language variants of one name."""
+
+    def test_shona_returns_shona_named_template(self):
+        self.assertEqual(
+            _template_name_for_lang("ats_daily_nudge", "sn"),
+            "_ats_daily_nudge_shona_version",
+        )
+
+    def test_english_returns_base_name_unchanged(self):
+        self.assertEqual(_template_name_for_lang("ats_daily_nudge", "en"), "ats_daily_nudge")
+
+    def test_shona_falls_back_to_base_name_if_no_shona_variant_submitted(self):
+        self.assertEqual(_template_name_for_lang("ats_some_future_template", "sn"), "ats_some_future_template")
+
+    def test_all_four_known_templates_map_correctly(self):
+        expected = {
+            "ats_daily_nudge": "_ats_daily_nudge_shona_version",
+            "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
+            "ats_reengagement": "ats_reengagement_shona_version",
+            "ats_daily_summary": "ats_daily_summary_shona_version",
+        }
+        for base_name, shona_name in expected.items():
+            self.assertEqual(_template_name_for_lang(base_name, "sn"), shona_name)
 
 
 class StreakCalculationTest(TransactionTestCase):
@@ -224,7 +253,23 @@ class OnboardingFollowupTest(TransactionTestCase):
         )
         self.profile = _make_user_profile(self.company, "+263771000200")
 
-    def test_sends_to_shop_with_no_sales(self):
+    def test_sends_shona_template_to_shona_speaking_owner(self):
+        """UserProfile.language defaults to 'sn' — should use the Shona-named
+        template (submitted to Meta as a distinct name, not a language
+        variant of the English template — see #235)."""
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_onboarding_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup_shona_version")
+        self.company.refresh_from_db()
+        self.assertTrue(self.company.onboarding_followup_sent)
+
+    def test_sends_english_template_to_english_speaking_owner(self):
+        self.profile.language = "en"
+        self.profile.save()
         send_mock = AsyncMock(return_value=True)
         async def _run_test():
             with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
@@ -232,8 +277,6 @@ class OnboardingFollowupTest(TransactionTestCase):
         result = _run(_run_test())
         self.assertIn(self.company.id, result["sent"])
         send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup")
-        self.company.refresh_from_db()
-        self.assertTrue(self.company.onboarding_followup_sent)
 
     def test_skips_shop_approved_today(self):
         self.company.first_message_date = date.today()
@@ -273,7 +316,9 @@ class ReengagementTest(TransactionTestCase):
             status="confirmed",
         )
 
-    def test_sends_to_shop_silent_2_plus_days(self):
+    def test_sends_shona_template_to_shop_silent_2_plus_days(self):
+        """UserProfile.language defaults to 'sn' — should use the Shona-named
+        template (submitted to Meta as a distinct name — see #235)."""
         self._make_sale(days_ago=3)
         send_mock = AsyncMock(return_value=True)
         async def _run_test():
@@ -284,8 +329,21 @@ class ReengagementTest(TransactionTestCase):
         self.company.refresh_from_db()
         self.assertEqual(self.company.last_reengagement_date, date.today())
         call_kwargs = send_mock.call_args
-        self.assertEqual(call_kwargs[0][1], "ats_reengagement")
+        self.assertEqual(call_kwargs[0][1], "ats_reengagement_shona_version")
         self.assertIn("components", call_kwargs[1])
+
+    def test_sends_english_template_to_english_speaking_owner(self):
+        self.profile.language = "en"
+        self.profile.save()
+        self._make_sale(days_ago=3)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        call_kwargs = send_mock.call_args
+        self.assertEqual(call_kwargs[0][1], "ats_reengagement")
 
     def test_skips_shop_active_yesterday(self):
         self._make_sale(days_ago=1)

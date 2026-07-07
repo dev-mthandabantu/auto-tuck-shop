@@ -489,6 +489,7 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
             use_template = not in_window
 
         if use_template:
+            from apps.whatsapp.services.nudge_service import _template_name_for_lang
             revenue_str = _display_revenue(snapshot.currency_revenues)
             top_seller = snapshot.top_products[0][0] if snapshot.top_products else "—"
             components = [{"type": "body", "parameters": [
@@ -497,7 +498,9 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
                 {"type": "text", "text": str(snapshot.sales_count)},
                 {"type": "text", "text": top_seller},
             ]}]
-            await wa_client.send_template_message(phone, "ats_daily_summary", components=components)
+            lang = await sync_to_async(_company_owner_lang, thread_sensitive=True)(company)
+            template_name = _template_name_for_lang("ats_daily_summary", lang)
+            await wa_client.send_template_message(phone, template_name, components=components)
         elif image_url:
             await wa_client.send_image(phone, image_url, caption=text_summary)
         else:

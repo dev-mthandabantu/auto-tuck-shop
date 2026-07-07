@@ -69,8 +69,10 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         )
         return sale
 
-    def test_uses_template_when_flag_enabled_and_outside_window(self):
-        """No inbound message in the last 24h → outside service window → template path."""
+    def test_uses_shona_template_when_flag_enabled_and_outside_window(self):
+        """No inbound message in the last 24h → outside service window → template path.
+        UserProfile.language defaults to 'sn' — should use the Shona-named
+        template (submitted to Meta as a distinct name — see #235)."""
         msg = WhatsAppMessage.objects.create(
             phone_number="+263771001001",
             direction=WhatsAppMessage.Direction.INBOUND,
@@ -93,7 +95,7 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         self.assertIn("+263771001001", recipients)
         send_template_mock.assert_called_once()
         call_args = send_template_mock.call_args
-        self.assertEqual(call_args[0][1], "ats_daily_summary")
+        self.assertEqual(call_args[0][1], "ats_daily_summary_shona_version")
         components = call_args[1]["components"]
         self.assertEqual(len(components[0]["parameters"]), 4)
 
@@ -128,6 +130,31 @@ class SendDailySummaryTemplateTest(TransactionTestCase):
         revenue_param = components[0]["parameters"][1]["text"]
         self.assertIn("R", revenue_param)
         self.assertNotIn("$", revenue_param)
+
+    def test_uses_english_template_for_english_speaking_owner(self):
+        self.owner.language = "en"
+        self.owner.save()
+        msg = WhatsAppMessage.objects.create(
+            phone_number="+263771001001",
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            company=self.company,
+        )
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(timestamp=timezone.now() - timedelta(hours=30))
+
+        self._make_sale()
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.business_reports.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.business_reports.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.business_reports import send_daily_summary
+                return await send_daily_summary(self.company)
+
+        _run(_run_test())
+        call_args = send_template_mock.call_args
+        self.assertEqual(call_args[0][1], "ats_daily_summary")
 
     def test_uses_image_when_flag_enabled_but_within_window(self):
         """Recent inbound message (<24h) + flag enabled → still image/text, NOT template.
