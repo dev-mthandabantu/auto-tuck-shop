@@ -235,6 +235,18 @@ class MaybeSendNudgesTest(TransactionTestCase):
             result = _run(maybe_send_nudges())
         self.assertNotIn(self.company.id, result["sent"])
 
+    @patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True)
+    def test_skips_shop_already_messaged_today_by_another_mechanism(self, _mock_window):
+        """Regression for #262 — a shop already messaged today via a different
+        automated nudge mechanism (e.g. reengagement) should not also get the
+        daily nudge, even though its own last_nudge_date is unset."""
+        self.company.last_automated_message_date = date.today()
+        self.company.save()
+        with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)):
+            result = _run(maybe_send_nudges())
+        self.assertNotIn(self.company.id, result["sent"])
+        self.assertIn(self.company.id, result["skipped"])
+
 
 def _mock_client(send_template_mock):
     """Return a mock WhatsApp client with send_template_message replaced."""
@@ -372,6 +384,35 @@ class ReengagementTest(TransactionTestCase):
         result = _run(_run_test())
         self.assertIn(self.company.id, result["sent"])
 
+    def test_skips_shop_already_messaged_today_by_another_mechanism(self):
+        """Regression for #262 — otherwise-eligible for reengagement, but
+        already messaged today via a different automated nudge mechanism."""
+        self._make_sale(days_ago=3)
+        self.company.last_automated_message_date = date.today()
+        self.company.save()
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_cross_mechanism_dedup_daily_nudge_then_reengagement_same_day(self):
+        """Regression for #262 — the exact scenario confirmed in production:
+        a shop eligible for both the daily nudge and reengagement on the same
+        day should only receive one message, not both."""
+        self._make_sale(days_ago=3)
+        with patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True), \
+             patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
+             patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
+             patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
+            nudge_result = _run(maybe_send_nudges())
+        self.assertIn(self.company.id, nudge_result["sent"])
+
+        send_mock = AsyncMock(return_value=True)
+        async def _run_reengagement():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        reengagement_result = _run(_run_reengagement())
+        self.assertNotIn(self.company.id, reengagement_result["sent"])
+        send_mock.assert_not_called()
+
 
 class ZeroContactFollowupTest(TransactionTestCase):
     """Shops approved but that have never sent a single message — regression for #234."""
@@ -405,6 +446,7 @@ class ZeroContactFollowupTest(TransactionTestCase):
         for days in (5, 7):
             self._set_approved_days_ago(days)
             self.company.last_zero_contact_followup_date = None
+            self.company.last_automated_message_date = None
             self.company.save()
             send_mock = AsyncMock(return_value=True)
             async def _run_test():

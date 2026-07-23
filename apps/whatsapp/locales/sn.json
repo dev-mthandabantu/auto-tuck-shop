@@ -20,7 +20,7 @@
         "btn_reject": "Cancel"
     },
     "approval": {
-        "welcome": "Makadii! Account yako yagamuchirwa paAuto Tuck Shop!\n\nShop: {company}\n\nUnogona kutumira audio (voice note) kana kunyora zvawatengesa nhasi. Semuenzaniso:\n\n'2 Mazoe $3 rimwe'\n\n'5 chingwa R18 chimwe, 2 shuga R40 imwe'\n\nUnogona kunyora ne USD ($), Rand (R), uye ZiG.\n\nUnogona kuisa mutengesi wenyu nekutumira:\n'add assistant +2637812345678'\n\n🌐 Dzidza zvakawanda: https://auto-tuck-shop.fly.dev\n👥 Joinha WhatsApp yedu: https://chat.whatsapp.com/G2HQ6f4Do3k3s7pLD3pnZI"
+        "welcome": "Makadii! Account yako yagamuchirwa paAuto Tuck Shop!\n\nShop: {company}\n\nUnogona kutumira audio (voice note) kana kunyora zvawatengesa nhasi. Semuenzaniso:\n\n'2 Mazoe $3 rimwe'\n\n'5 chingwa R18 chimwe, 2 shuga R40 imwe'\n\nUnogona kunyora ne USD ($), Rand (R), uye ZiG.\n\nUnogona kuisa mutengesi wenyu nekutumira:\n'add assistant +2637812345678'\n\nNyora *stop* chero nguva kudzimisa ma reminder.\n\n🌐 Dzidza zvakawanda: https://auto-tuck-shop.fly.dev\n👥 Joinha WhatsApp yedu: https://chat.whatsapp.com/G2HQ6f4Do3k3s7pLD3pnZI"
     },
     "error": {
         "processing_failed": "Sorry, pane chakanganisika. Zama zvakare."

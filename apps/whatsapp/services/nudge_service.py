@@ -220,6 +220,24 @@ def _recently_active(company) -> bool:
 
 
 @sync_to_async
+def _already_messaged_today(company) -> bool:
+    """True if any of the four automated nudge/followup mechanisms already
+    sent this company a message today — prevents two mechanisms firing
+    same-day (see #262)."""
+    from apps.core.models import Company
+    close_old_connections()
+    today = timezone.localdate()
+    return Company.objects.filter(pk=company.pk, last_automated_message_date=today).exists()
+
+
+@sync_to_async
+def _mark_automated_message_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(last_automated_message_date=timezone.localdate())
+
+
+@sync_to_async
 def _company_owner_lang(company) -> str:
     from apps.core.models import UserProfile
     close_old_connections()
@@ -301,6 +319,11 @@ async def maybe_send_nudges(now=None) -> dict:
             skipped.append(company.id)
             continue
 
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping nudge", company.id)
+            skipped.append(company.id)
+            continue
+
         context = await sync_to_async(build_shop_context)(company)
         lang = await _company_owner_lang(company)
         cta = await pick_nudge_cta(context, lang)
@@ -319,6 +342,7 @@ async def maybe_send_nudges(now=None) -> dict:
 
         if success:
             await _record_nudge_sent(company, today)
+            await _mark_automated_message_sent(company)
             logger.info("Nudge sent to company %s (stage %s)", company.id, company.nudge_stage)
             sent.append(company.id)
         else:
@@ -362,6 +386,10 @@ async def maybe_send_onboarding_followup() -> dict:
     skipped = []
     client = get_whatsapp_client()
     for company in candidates:
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping onboarding followup", company.id)
+            skipped.append(company.id)
+            continue
         phones = await _get_non_opted_out_phones(company)
         if not phones:
             skipped.append(company.id)
@@ -375,6 +403,7 @@ async def maybe_send_onboarding_followup() -> dict:
                 all_succeeded = all_succeeded and bool(success)
             if all_succeeded:
                 await _mark_onboarding_followup_sent(company)
+                await _mark_automated_message_sent(company)
                 logger.info("Onboarding followup sent to company %s", company.id)
                 sent.append(company.id)
             else:
@@ -446,6 +475,10 @@ async def maybe_send_reengagement() -> dict:
     skipped = []
     client = get_whatsapp_client()
     for company in candidates:
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping reengagement", company.id)
+            skipped.append(company.id)
+            continue
         phones = await _get_non_opted_out_phones(company)
         if not phones:
             skipped.append(company.id)
@@ -461,6 +494,7 @@ async def maybe_send_reengagement() -> dict:
                 all_succeeded = all_succeeded and bool(success)
             if all_succeeded:
                 await _mark_reengagement_sent(company)
+                await _mark_automated_message_sent(company)
                 logger.info("Reengagement sent to company %s", company.id)
                 sent.append(company.id)
             else:
@@ -529,6 +563,10 @@ async def maybe_send_zero_contact_followup() -> dict:
         if company.last_zero_contact_followup_date == today:
             skipped.append(company.id)
             continue
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping zero-contact followup", company.id)
+            skipped.append(company.id)
+            continue
         phones = await _get_non_opted_out_phones(company)
         if not phones:
             skipped.append(company.id)
@@ -543,6 +581,7 @@ async def maybe_send_zero_contact_followup() -> dict:
                 all_succeeded = all_succeeded and bool(success)
             if all_succeeded:
                 await _mark_zero_contact_followup_sent(company)
+                await _mark_automated_message_sent(company)
                 logger.info(
                     "Zero-contact followup sent to company %s (attempt %s/%s)",
                     company.id, company.zero_contact_followup_count + 1, len(_ZERO_CONTACT_FOLLOWUP_DAYS),
