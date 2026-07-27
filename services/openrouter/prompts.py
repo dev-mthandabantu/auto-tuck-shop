@@ -49,9 +49,18 @@ FOR "sale" INTENT:
   * Example: "five bread twenty rand each and five sugar fifty rand each" → 5 bread @ 20, 5 sugar @ 50
   * Example: "two cokes and three chips" → 2 cokes, 3 chips
 - If quantity not specified, assume 1
+- HALF/FRACTIONAL PORTIONS: A fraction before a product name ("1/2", "½", "half a", "half") is NOT a fractional quantity — it describes a smaller product variant, e.g. a half-plate instead of a full plate. Fold the fraction into the product name and set quantity to the whole number of portions ordered (usually 1), never a fractional quantity.
+  * Example: "1/2 Plate beef $0.50" → items: [{"product_name": "Plate beef (half)", "quantity": 1, "unit_price": 0.50}]
+  * Example: "2 half plates chicken $2 each" → items: [{"product_name": "Plate chicken (half)", "quantity": 2, "unit_price": 2}]
 - Extract unit prices if mentioned (REQUIRED if present):
   * Parse both numeric (10, 5.50) and written numbers (ten, five)
   * Examples: "ten dollars" → 10, "five rand" → 5, "2.50" → 2.50
+  * "Price×Quantity" or "Price x Quantity" suffix: the number AFTER × is the quantity, the number BEFORE is the unit price. Example: "$1×16" → quantity=16, unit_price=1.00
+  * "Product ×N Price" — × directly before a number, placed between the product name and a separately-stated price — means N units at that price EACH (× here marks per-unit quantity, not a total). Example: "Chicken plate ×2 $1" → quantity=2, unit_price=1.00 (NOT $0.50 each)
+  * TOTAL-VS-UNIT PRICE, when quantity > 1 and there is NO per-unit marker ("each", "per", "apiece", "imwe"/"rimwe"/etc.): a single stated price could mean the TOTAL for all items, or the price PER item. Resolve this ONLY by exact division — do not guess:
+    - If the stated price DIVIDES EVENLY by the quantity (e.g. "7 plates $7" → 7÷7=1, or "7 plates $14" → 14÷7=2), treat it as a total and return unit_price = stated price ÷ quantity.
+    - If the stated price does NOT divide evenly by the quantity (e.g. "4 games $1" → 1÷4 is not a whole number of cents), do NOT divide it and do NOT guess a fractional per-unit price. Return the stated price completely UNCHANGED as unit_price — a downstream system will flag it as ambiguous and ask the shop owner to clarify. Never invent a value like 0.25 that isn't clearly stated anywhere in the message.
+    - If the stated price has a fractional/cents component already (e.g. "3 chips $1.50"), it is virtually always ALREADY a per-unit price, not a total — return it unchanged as unit_price, do not attempt any division on it.
 - Detect currency from the SAME phrase as the price:
   * $ or USD or "US dollars" or "dollars" or "cents" = "USD" ("cents" in Zimbabwe = US cents, e.g. "25 cents" = USD 0.25)
   * ZiG or ZWG or "Zimbabwe Gold" = "ZWG"
@@ -80,6 +89,12 @@ PARSING EXAMPLES:
 - "2 waters R15 each" → items: [{"product_name": "waters", "quantity": 2, "unit_price": 15}], currency: "ZAR"
 - "2 coke $3 each, 1 bread ZWG500" → items: [{"product_name": "coke", "quantity": 2, "unit_price": 3, "currency": "USD"}, {"product_name": "bread", "quantity": 1, "unit_price": 500, "currency": "ZWG"}], currency: "USD"
 - "4 games for 25 cents each" → items: [{"product_name": "games", "quantity": 4, "unit_price": 0.25, "currency": "USD"}], currency: "USD"  (cents in Zimbabwe = US cents)
+- "Plate Beef $1×16" → items: [{"product_name": "Plate Beef", "quantity": 16, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N suffix = N units at the stated price each)
+- "Chicken plate ×2 $1" → items: [{"product_name": "Chicken plate", "quantity": 2, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (×N before a separately-stated price = N units at that price each, not a total to split)
+- "7 plates beef $7" → items: [{"product_name": "plates beef", "quantity": 7, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  (price == qty → $1 each; the $7 is a total, not per-unit)
+- "7 plates beef $14" → items: [{"product_name": "plates beef", "quantity": 7, "unit_price": 2.00, "currency": "USD"}], currency: "USD"  (price divisible by qty → $2 each; the $14 is a total)
+- "4 games $1 sale" → items: [{"product_name": "games", "quantity": 4, "unit_price": 1.00, "currency": "USD"}], currency: "USD"  ($1 does NOT divide evenly by 4 — do NOT guess $0.25 each; return the stated price unchanged so it can be flagged as ambiguous)
+- "1/2 Plate beef $0.50" → items: [{"product_name": "Plate beef (half)", "quantity": 1, "unit_price": 0.50, "currency": "USD"}], currency: "USD"  (half-portion is a distinct product, not quantity 0.5)
 
 Shona examples:
 - "coke 5 imwe $1" → items: [{"product_name": "coke", "quantity": 5, "unit_price": 1}], currency: "USD"

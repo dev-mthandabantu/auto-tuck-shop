@@ -1,6 +1,7 @@
 {
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
+        "prompt_with_first_message": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:\n\nWe saved your message — once approved you can send it again or we'll ask you to confirm it.",
         "btn_en": "English",
         "btn_sn": "Shona",
         "confirmed": "Language set to English."
@@ -20,7 +21,7 @@
         "btn_reject": "Reject"
     },
     "approval": {
-        "welcome": "Welcome to Auto Tuck Shop! Your account has been approved.\n\nCompany: {company}\n\nYou can now send sales messages to track your sales. For example:\n'2 Mazoe $3 each'\nor: '5 bread R18 each, 2 sugar R40 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.\n\nAs an owner, you can also add assistants by sending:\n'add assistant +2637812345678'"
+        "welcome": "Welcome to Auto Tuck Shop! Your account has been approved.\n\nCompany: {company}\n\nYou can now send sales messages to track your sales. For example:\n\n'2 Mazoe $3 each'\n\n'5 bread R18 each, 2 sugar R40 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.\n\nAs an owner, you can also add assistants by sending:\n'add assistant +2637812345678'\n\nReply *stop* anytime to turn off reminder messages.\n\n🌐 Learn more about us: https://auto-tuck-shop.fly.dev\n👥 Join our WhatsApp community: https://chat.whatsapp.com/G2HQ6f4Do3k3s7pLD3pnZI"
     },
     "error": {
         "processing_failed": "Sorry, something went wrong. Please try again."
@@ -33,7 +34,8 @@
         "not_owner": "Sorry, only shop owners can add assistants. Contact the shop owner if you need to add team members.",
         "missing_phone": "I could not find a phone number. Please resend the full message, e.g., 'add assistant +2637812345678'",
         "already_registered": "The phone number {phone} is already registered to another user.",
-        "added": "Assistant added successfully!\n\nPhone: {phone}\nThey can now send sales messages for {company}."
+        "added": "Assistant added successfully!\n\nPhone: {phone}\nThey can now send sales messages for {company}.",
+        "welcome": "You have been added as an assistant for {company}.\n\nYou can now send sales messages to this number, just like the owner. For example:\n\n'2 Mazoe $3 each'\n'5 bread R18 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG."
     },
     "closing": {
         "setup_prompt": "One last thing — what time does your shop usually close? I will use this to send your daily summary automatically.",

@@ -76,7 +76,14 @@ async def process_audio_message_async(
                     logger.info(f"R2 upload completed for {message_id}: {r2_url}")
 
             asyncio.create_task(_background_r2_upload())
-            transcribed_text = await elevenlabs_client.transcribe_audio(audio_data, filename)
+
+            from apps.whatsapp.services.message_parser import _get_active_products
+            products = await _get_active_products(company)
+            product_names = [p.name for p in products]
+
+            transcribed_text = await elevenlabs_client.transcribe_audio(
+                audio_data, filename, product_names=product_names
+            )
             logger.info(f"Transcribed audio message {message_id}: {transcribed_text[:100]}...")
 
             @db_sync_to_async

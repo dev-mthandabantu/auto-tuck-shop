@@ -8,6 +8,8 @@ from django.contrib.auth.models import User
 from django.db import close_old_connections, IntegrityError
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from django.conf import settings
+
 from apps.whatsapp.services.webhook_handler import (
     ADMIN_PHONE_NUMBER,
     db_sync_to_async,
@@ -119,6 +121,20 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
     message_sid = await _send_response_with_buttons(ADMIN_PHONE_NUMBER, message, buttons)
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
+    else:
+        # Button send failed (likely outside 24h window). Fall back to ats_reengagement
+        # template — it will deliver reliably and prompt Brighton to check the admin panel.
+        # Replace with ats_admin_new_signup once that template is approved (#199).
+        logger.warning(
+            "Admin waitlist button notification failed for entry %s (%s) — falling back to template",
+            entry.id,
+            entry.phone_number,
+        )
+        from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+        components = [{"type": "body", "parameters": [{"type": "text", "text": "Brighton"}]}]
+        await get_whatsapp_client().send_template_message(
+            ADMIN_PHONE_NUMBER, "ats_reengagement", components=components
+        )
 
 
 async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
@@ -127,11 +143,12 @@ async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
     if not created:
         logger.info("Duplicate new-user message from %s, skipping prompt", phone_number)
         return
+    prompt_key = "language.prompt_with_first_message" if text.strip() else "language.prompt"
     buttons = [
         {"id": f"lang_en_{entry.id}", "title": t("language.btn_en")},
         {"id": f"lang_sn_{entry.id}", "title": t("language.btn_sn")},
     ]
-    message_sid = await _send_response_with_buttons(sender, t("language.prompt"), buttons)
+    message_sid = await _send_response_with_buttons(sender, t(prompt_key), buttons)
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
 
@@ -181,7 +198,12 @@ async def process_waitlist_button_action_async(
     if action == "approve":
         company, profile = await _approve_waitlist_entry(entry)
         await _send_response(sender, t("waitlist_admin.approved", phone=entry.phone_number, company=company.name))
-        await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
+        if settings.USE_TEMPLATE_MESSAGES:
+            from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            components = [{"type": "body", "parameters": [{"type": "text", "text": company.name}]}]
+            await get_whatsapp_client().send_template_message(entry.phone_number, "ats_approval_welcome", components=components)
+        else:
+            await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
     else:
         await _send_response(sender, t("waitlist_admin.rejected", phone=entry.phone_number))
         await _send_response(entry.phone_number, t("waitlist.rejected", lang=lang))
@@ -202,6 +224,19 @@ async def handle_add_assistant(sender: str, text: str, user_profile, result) -> 
         return
     await _create_assistant(phone_number, user_profile.company)
     await _send_response(sender, t("assistant.added", lang=lang, phone=phone_number, company=user_profile.company.name))
+    if settings.USE_TEMPLATE_MESSAGES:
+        try:
+            from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            components = [{"type": "body", "parameters": [{"type": "text", "text": user_profile.company.name}]}]
+            sent = await get_whatsapp_client().send_template_message(
+                phone_number, "ats_assistant_welcome", components=components
+            )
+            if sent:
+                return
+        except Exception:
+            logger.exception("Failed to send assistant welcome template")
+
+    await _send_response(phone_number, t("assistant.welcome", lang=lang, company=user_profile.company.name))
 
 
 def handle_new_waitlist_entry(sender: str, text: str) -> None:

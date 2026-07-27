@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
-from django.test import TransactionTestCase
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from apps.core.models import Company, UserProfile
@@ -13,8 +13,11 @@ from apps.whatsapp.services.nudge_service import (
     _compute_streak,
     _eligible_ctas,
     _in_send_window,
+    _template_name_for_lang,
     build_shop_context,
     maybe_send_nudges,
+    maybe_send_onboarding_followup,
+    maybe_send_reengagement,
 )
 
 
@@ -45,6 +48,34 @@ def _make_user_profile(company, phone, opted_out=False):
         role=UserProfile.Role.OWNER, nudge_opt_out=opted_out,
     )
     return profile
+
+
+class TemplateNameForLangTest(TestCase):
+    """Direct tests for _template_name_for_lang — no DB needed. Regression
+    for #235: these are distinct template NAMES submitted to Meta, not
+    language variants of one name."""
+
+    def test_shona_returns_shona_named_template(self):
+        self.assertEqual(
+            _template_name_for_lang("ats_daily_nudge", "sn"),
+            "_ats_daily_nudge_shona_version",
+        )
+
+    def test_english_returns_base_name_unchanged(self):
+        self.assertEqual(_template_name_for_lang("ats_daily_nudge", "en"), "ats_daily_nudge")
+
+    def test_shona_falls_back_to_base_name_if_no_shona_variant_submitted(self):
+        self.assertEqual(_template_name_for_lang("ats_some_future_template", "sn"), "ats_some_future_template")
+
+    def test_all_four_known_templates_map_correctly(self):
+        expected = {
+            "ats_daily_nudge": "_ats_daily_nudge_shona_version",
+            "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
+            "ats_reengagement": "ats_reengagement_shona_version",
+            "ats_daily_summary": "ats_daily_summary_shona_version",
+        }
+        for base_name, shona_name in expected.items():
+            self.assertEqual(_template_name_for_lang(base_name, "sn"), shona_name)
 
 
 class StreakCalculationTest(TransactionTestCase):
@@ -172,7 +203,7 @@ class MaybeSendNudgesTest(TransactionTestCase):
         async def _run_with_mocks():
             with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
                  patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
-                 patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=None)):
+                 patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
                 return await maybe_send_nudges()
         result = _run(_run_with_mocks())
         self.assertIn(self.company.id, result["sent"])
@@ -203,6 +234,270 @@ class MaybeSendNudgesTest(TransactionTestCase):
         with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)):
             result = _run(maybe_send_nudges())
         self.assertNotIn(self.company.id, result["sent"])
+
+    @patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True)
+    def test_skips_shop_already_messaged_today_by_another_mechanism(self, _mock_window):
+        """Regression for #262 — a shop already messaged today via a different
+        automated nudge mechanism (e.g. reengagement) should not also get the
+        daily nudge, even though its own last_nudge_date is unset."""
+        self.company.last_automated_message_date = date.today()
+        self.company.save()
+        with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)):
+            result = _run(maybe_send_nudges())
+        self.assertNotIn(self.company.id, result["sent"])
+        self.assertIn(self.company.id, result["skipped"])
+
+
+def _mock_client(send_template_mock):
+    """Return a mock WhatsApp client with send_template_message replaced."""
+    from unittest.mock import MagicMock
+    client = MagicMock()
+    client.send_template_message = send_template_mock
+    return client
+
+
+class OnboardingFollowupTest(TransactionTestCase):
+
+    def setUp(self):
+        self.company = _make_company(
+            name="New Shop",
+            first_message_date=date.today() - timedelta(days=2),
+        )
+        self.profile = _make_user_profile(self.company, "+263771000200")
+
+    def test_sends_shona_template_to_shona_speaking_owner(self):
+        """UserProfile.language defaults to 'sn' — should use the Shona-named
+        template (submitted to Meta as a distinct name, not a language
+        variant of the English template — see #235)."""
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_onboarding_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup_shona_version")
+        self.company.refresh_from_db()
+        self.assertTrue(self.company.onboarding_followup_sent)
+
+    def test_sends_english_template_to_english_speaking_owner(self):
+        self.profile.language = "en"
+        self.profile.save()
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_onboarding_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup")
+
+    def test_skips_shop_approved_today(self):
+        self.company.first_message_date = date.today()
+        self.company.save()
+        # No candidates found — no send call made, just check result
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_with_confirmed_sale(self):
+        from apps.sales.models import Sale
+        Sale.objects.create(company=self.company, total_amount=10, status="confirmed")
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_already_sent(self):
+        self.company.onboarding_followup_sent = True
+        self.company.save()
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+
+class ReengagementTest(TransactionTestCase):
+
+    def setUp(self):
+        self.company = _make_company(
+            name="Silent Shop",
+            first_message_date=date.today() - timedelta(days=10),
+        )
+        self.profile = _make_user_profile(self.company, "+263771000300")
+
+    def _make_sale(self, days_ago):
+        from apps.sales.models import Sale
+        Sale.objects.create(
+            company=self.company,
+            sale_timestamp=timezone.now() - timedelta(days=days_ago),
+            total_amount=10,
+            status="confirmed",
+        )
+
+    def test_sends_shona_template_to_shop_silent_2_plus_days(self):
+        """UserProfile.language defaults to 'sn' — should use the Shona-named
+        template (submitted to Meta as a distinct name — see #235)."""
+        self._make_sale(days_ago=3)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.last_reengagement_date, date.today())
+        call_kwargs = send_mock.call_args
+        self.assertEqual(call_kwargs[0][1], "ats_reengagement_shona_version")
+        self.assertIn("components", call_kwargs[1])
+
+    def test_sends_english_template_to_english_speaking_owner(self):
+        self.profile.language = "en"
+        self.profile.save()
+        self._make_sale(days_ago=3)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        call_kwargs = send_mock.call_args
+        self.assertEqual(call_kwargs[0][1], "ats_reengagement")
+
+    def test_skips_shop_active_yesterday(self):
+        self._make_sale(days_ago=1)
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_with_no_sales_history(self):
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_reengaged_within_7_days(self):
+        self._make_sale(days_ago=3)
+        self.company.last_reengagement_date = date.today() - timedelta(days=3)
+        self.company.save()
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_sends_to_shop_reengaged_over_7_days_ago(self):
+        self._make_sale(days_ago=3)
+        self.company.last_reengagement_date = date.today() - timedelta(days=8)
+        self.company.save()
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+
+    def test_skips_shop_already_messaged_today_by_another_mechanism(self):
+        """Regression for #262 — otherwise-eligible for reengagement, but
+        already messaged today via a different automated nudge mechanism."""
+        self._make_sale(days_ago=3)
+        self.company.last_automated_message_date = date.today()
+        self.company.save()
+        result = _run(maybe_send_reengagement())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_cross_mechanism_dedup_daily_nudge_then_reengagement_same_day(self):
+        """Regression for #262 — the exact scenario confirmed in production:
+        a shop eligible for both the daily nudge and reengagement on the same
+        day should only receive one message, not both."""
+        self._make_sale(days_ago=3)
+        with patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True), \
+             patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
+             patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
+             patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
+            nudge_result = _run(maybe_send_nudges())
+        self.assertIn(self.company.id, nudge_result["sent"])
+
+        send_mock = AsyncMock(return_value=True)
+        async def _run_reengagement():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_reengagement()
+        reengagement_result = _run(_run_reengagement())
+        self.assertNotIn(self.company.id, reengagement_result["sent"])
+        send_mock.assert_not_called()
+
+
+class ZeroContactFollowupTest(TransactionTestCase):
+    """Shops approved but that have never sent a single message — regression for #234."""
+
+    def setUp(self):
+        self.company = _make_company(name="Never Started Shop")
+        self.profile = _make_user_profile(self.company, "+263771000400")
+
+    def _set_approved_days_ago(self, days):
+        approved_at = timezone.now() - timedelta(days=days, minutes=30)
+        Company.objects.filter(pk=self.company.pk).update(created_at=approved_at)
+        self.company.refresh_from_db()
+
+    def test_sends_on_day_2(self):
+        self._set_approved_days_ago(2)
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                return await maybe_send_zero_contact_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with(
+            "+263771000400", "ats_zero_contact_followup", language_code="sn"
+        )
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.zero_contact_followup_count, 1)
+        self.assertEqual(self.company.last_zero_contact_followup_date, date.today())
+
+    def test_sends_on_day_5_and_7(self):
+        for days in (5, 7):
+            self._set_approved_days_ago(days)
+            self.company.last_zero_contact_followup_date = None
+            self.company.last_automated_message_date = None
+            self.company.save()
+            send_mock = AsyncMock(return_value=True)
+            async def _run_test():
+                with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                    from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                    return await maybe_send_zero_contact_followup()
+            result = _run(_run_test())
+            self.assertIn(self.company.id, result["sent"])
+            self.company.refresh_from_db()
+
+    def test_skips_shop_that_has_sent_a_message(self):
+        self._set_approved_days_ago(2)
+        self.company.first_message_date = date.today()
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_not_on_a_scheduled_day(self):
+        self._set_approved_days_ago(3)  # day 3 — not in (2, 5, 7)
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_stops_after_3_attempts(self):
+        self._set_approved_days_ago(7)
+        self.company.zero_contact_followup_count = 3
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_does_not_double_send_same_day(self):
+        self._set_approved_days_ago(2)
+        self.company.last_zero_contact_followup_date = date.today()
+        self.company.save()
+        from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+        result = _run(maybe_send_zero_contact_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_does_not_advance_count_on_send_failure(self):
+        self._set_approved_days_ago(2)
+        send_mock = AsyncMock(return_value=False)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                from apps.whatsapp.services.nudge_service import maybe_send_zero_contact_followup
+                return await maybe_send_zero_contact_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["skipped"])
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.zero_contact_followup_count, 0)
 
 
 class OptOutHandlerTest(TransactionTestCase):

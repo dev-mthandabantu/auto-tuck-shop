@@ -367,6 +367,145 @@ h1 {
   font-weight: 900;
 }
 
+/* Shop quote band */
+.shop-quote-band {
+  border-top: 1px solid var(--ats-line);
+  border-bottom: 1px solid var(--ats-line);
+  background: var(--ats-cream-strong);
+}
+
+.quote-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+}
+
+.quote-card {
+  position: relative;
+  padding: 40px 40px 40px 56px;
+}
+
+.quote-card + .quote-card {
+  border-left: 1px solid var(--ats-line);
+}
+
+.shop-quote-mark {
+  position: absolute;
+  left: 16px;
+  top: 32px;
+  font-size: 4rem;
+  line-height: 1;
+  color: var(--ats-terracotta);
+  font-family: Georgia, serif;
+  opacity: 0.45;
+}
+
+.shop-quote {
+  margin: 0;
+}
+
+.shop-quote p {
+  margin: 0 0 16px;
+  color: var(--ats-charcoal);
+  font-size: clamp(1rem, 1.5vw, 1.2rem);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.shop-quote-attr {
+  color: var(--ats-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.shop-quote-placeholder {
+  font-weight: 400;
+  font-style: italic;
+  opacity: 0.7;
+}
+
+@media (max-width: 768px) {
+  .quote-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quote-card + .quote-card {
+    border-left: none;
+    border-top: 1px solid var(--ats-line);
+  }
+}
+
+/* Team section */
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.team-card {
+  border: 1px solid var(--ats-line);
+  border-radius: 8px;
+  background: var(--ats-white);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.team-photo-wrap {
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.team-photo {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  object-fit: cover;
+  object-position: center top;
+  border: 2px solid var(--ats-line);
+  display: block;
+}
+
+.team-photo-fallback {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  background: var(--ats-green-soft);
+  color: var(--ats-green);
+  font-size: 2.5rem;
+  font-weight: 900;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ats-line);
+}
+
+.team-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.team-name {
+  color: var(--ats-charcoal);
+  font-size: 1rem;
+}
+
+.team-role {
+  color: var(--ats-terracotta);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.team-bio {
+  margin: 8px 0 0;
+  color: var(--ats-muted);
+  font-size: 0.94rem;
+  line-height: 1.55;
+}
+
 .trust-band {
   border-top: 1px solid var(--ats-line);
   border-bottom: 1px solid var(--ats-line);
@@ -457,7 +596,8 @@ h1 {
 
   .hero-visual,
   .feature-grid,
-  .workflow {
+  .workflow,
+  .team-grid {
     grid-template-columns: 1fr;
   }
 

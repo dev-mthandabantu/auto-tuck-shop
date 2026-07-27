@@ -16,6 +16,27 @@ logger = logging.getLogger(__name__)
 # CTA definitions: key, eligible_ctas function gate, param-builder
 _ONBOARDING_DAYS = 14
 
+# Shona-language template names — submitted to Meta as distinct template
+# names rather than a language variant of the English template (Meta
+# normally supports one template name with multiple language variants
+# selected via language_code, but these were submitted as separate names —
+# see #235). Falls back to the English template name if no Shona variant
+# has been submitted yet for a given template.
+_SHONA_TEMPLATE_NAMES = {
+    "ats_daily_nudge": "_ats_daily_nudge_shona_version",
+    "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
+    "ats_reengagement": "ats_reengagement_shona_version",
+    "ats_daily_summary": "ats_daily_summary_shona_version",
+}
+
+
+def _template_name_for_lang(base_name: str, lang: str) -> str:
+    """Return the Shona-named template variant if lang is Shona and one has
+    been submitted, else the base (English) template name."""
+    if lang == "sn":
+        return _SHONA_TEMPLATE_NAMES.get(base_name, base_name)
+    return base_name
+
 
 def _compute_streak(company) -> int:
     """Count consecutive days with at least one confirmed sale ending today."""
@@ -199,6 +220,24 @@ def _recently_active(company) -> bool:
 
 
 @sync_to_async
+def _already_messaged_today(company) -> bool:
+    """True if any of the four automated nudge/followup mechanisms already
+    sent this company a message today — prevents two mechanisms firing
+    same-day (see #262)."""
+    from apps.core.models import Company
+    close_old_connections()
+    today = timezone.localdate()
+    return Company.objects.filter(pk=company.pk, last_automated_message_date=today).exists()
+
+
+@sync_to_async
+def _mark_automated_message_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(last_automated_message_date=timezone.localdate())
+
+
+@sync_to_async
 def _company_owner_lang(company) -> str:
     from apps.core.models import UserProfile
     close_old_connections()
@@ -229,16 +268,21 @@ def _get_non_opted_out_phones(company) -> list[str]:
     )
 
 
-async def _send_nudge(company, message: str, cta_type: str = "text", lang: str = "en") -> None:
+async def _send_nudge(company, message: str, cta_type: str = "text", lang: str = "en") -> bool:
+    """Send the nudge to every non-opted-out recipient. Returns True only if all sends succeeded."""
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     from apps.whatsapp.services.webhook_handler import t
     phones = await _get_non_opted_out_phones(company)
+    owner_name = await _get_owner_name(company)
     client = get_whatsapp_client()
+    all_succeeded = True
     for phone in phones:
         if settings.USE_TEMPLATE_MESSAGES:
-            await client.send_template_message(phone, "ats_daily_nudge")
+            components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
+            template_name = _template_name_for_lang("ats_daily_nudge", lang)
+            success = await client.send_template_message(phone, template_name, components=components)
         elif cta_type == "button":
-            await client.send_message_with_buttons(
+            success = await client.send_message_with_buttons(
                 phone,
                 message,
                 buttons=[
@@ -247,7 +291,9 @@ async def _send_nudge(company, message: str, cta_type: str = "text", lang: str =
                 ],
             )
         else:
-            await client.send_message(phone, message)
+            success = await client.send_message(phone, message)
+        all_succeeded = all_succeeded and bool(success)
+    return all_succeeded
 
 
 def _in_send_window() -> bool:
@@ -273,6 +319,11 @@ async def maybe_send_nudges(now=None) -> dict:
             skipped.append(company.id)
             continue
 
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping nudge", company.id)
+            skipped.append(company.id)
+            continue
+
         context = await sync_to_async(build_shop_context)(company)
         lang = await _company_owner_lang(company)
         cta = await pick_nudge_cta(context, lang)
@@ -283,12 +334,263 @@ async def maybe_send_nudges(now=None) -> dict:
             continue
 
         try:
-            await _send_nudge(company, cta["message"], cta_type=cta["cta_type"], lang=lang)
-            await _record_nudge_sent(company, today)
-            logger.info("Nudge sent to company %s (stage %s)", company.id, company.nudge_stage)
-            sent.append(company.id)
+            success = await _send_nudge(company, cta["message"], cta_type=cta["cta_type"], lang=lang)
         except Exception:
             logger.exception("Failed to send nudge to company %s", company.id)
             skipped.append(company.id)
+            continue
 
+        if success:
+            await _record_nudge_sent(company, today)
+            await _mark_automated_message_sent(company)
+            logger.info("Nudge sent to company %s (stage %s)", company.id, company.nudge_stage)
+            sent.append(company.id)
+        else:
+            logger.warning("Nudge send failed for company %s — not advancing nudge_stage", company.id)
+            skipped.append(company.id)
+
+    return {"sent": sent, "skipped": skipped}
+
+
+@sync_to_async
+def _load_onboarding_followup_candidates():
+    from apps.sales.models import Sale
+    from apps.core.models import Company
+    close_old_connections()
+    today = timezone.localdate()
+    companies = Company.objects.filter(
+        active=True,
+        first_message_date__isnull=False,
+        onboarding_followup_sent=False,
+    ).exclude(first_message_date=today)
+    result = []
+    for company in companies:
+        has_sale = Sale.objects.filter(company=company, status="confirmed").exists()
+        if not has_sale:
+            result.append(company)
+    return result
+
+
+@sync_to_async
+def _mark_onboarding_followup_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(onboarding_followup_sent=True)
+
+
+async def maybe_send_onboarding_followup() -> dict:
+    """Send ats_onboarding_followup template to approved shops that have never recorded a sale."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_onboarding_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping onboarding followup", company.id)
+            skipped.append(company.id)
+            continue
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        lang = await _company_owner_lang(company)
+        template_name = _template_name_for_lang("ats_onboarding_followup", lang)
+        try:
+            all_succeeded = True
+            for phone in phones:
+                success = await client.send_template_message(phone, template_name)
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_onboarding_followup_sent(company)
+                await _mark_automated_message_sent(company)
+                logger.info("Onboarding followup sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Onboarding followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send onboarding followup to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+@sync_to_async
+def _load_reengagement_candidates():
+    from apps.sales.models import Sale
+    from apps.core.models import Company
+    from django.db import models as django_models
+    close_old_connections()
+    today = timezone.localdate()
+    cutoff = today - timedelta(days=2)
+    seven_days_ago = today - timedelta(days=7)
+    companies = Company.objects.filter(active=True).filter(
+        django_models.Q(last_reengagement_date__isnull=True)
+        | django_models.Q(last_reengagement_date__lte=seven_days_ago)
+    )
+    result = []
+    for company in companies:
+        last_sale_date = (
+            Sale.objects.filter(company=company, status="confirmed")
+            .order_by("-sale_timestamp")
+            .values_list("sale_timestamp__date", flat=True)
+            .first()
+        )
+        if last_sale_date and last_sale_date <= cutoff:
+            result.append(company)
+    return result
+
+
+@sync_to_async
+def _get_owner_name(company) -> str:
+    from apps.core.models import UserProfile
+    close_old_connections()
+    profile = (
+        UserProfile.objects.filter(company=company, role=UserProfile.Role.OWNER, user__is_active=True)
+        .select_related("user")
+        .first()
+    )
+    if profile:
+        full_name = profile.user.get_full_name()
+        if full_name:
+            return full_name
+    name = company.name
+    if not name or name.lower() == "unnamed shop":
+        return "there"
+    return name
+
+
+@sync_to_async
+def _mark_reengagement_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(last_reengagement_date=timezone.localdate())
+
+
+async def maybe_send_reengagement() -> dict:
+    """Send ats_reengagement template to shops that have been silent for 2+ days."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_reengagement_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping reengagement", company.id)
+            skipped.append(company.id)
+            continue
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        owner_name = await _get_owner_name(company)
+        components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
+        lang = await _company_owner_lang(company)
+        template_name = _template_name_for_lang("ats_reengagement", lang)
+        try:
+            all_succeeded = True
+            for phone in phones:
+                success = await client.send_template_message(phone, template_name, components=components)
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_reengagement_sent(company)
+                await _mark_automated_message_sent(company)
+                logger.info("Reengagement sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Reengagement send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send reengagement to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+# Days after approval (Company.created_at) to send each zero-contact follow-up
+# attempt. Capped at 3 — a shop still silent after day 7 needs personal
+# outreach (see #149), not more automated attempts.
+_ZERO_CONTACT_FOLLOWUP_DAYS = (2, 5, 7)
+
+
+@sync_to_async
+def _load_zero_contact_followup_candidates():
+    from apps.core.models import Company
+    close_old_connections()
+    now = timezone.now()
+    candidates = []
+    for days in _ZERO_CONTACT_FOLLOWUP_DAYS:
+        cutoff_start = now - timedelta(days=days, hours=1)
+        cutoff_end = now - timedelta(days=days)
+        candidates.append(
+            Company.objects.filter(
+                active=True,
+                first_message_date__isnull=True,
+                created_at__gte=cutoff_start,
+                created_at__lt=cutoff_end,
+            )
+        )
+    seen_ids = set()
+    result = []
+    for qs in candidates:
+        for company in qs:
+            if company.id not in seen_ids and company.zero_contact_followup_count < len(_ZERO_CONTACT_FOLLOWUP_DAYS):
+                seen_ids.add(company.id)
+                result.append(company)
+    return result
+
+
+@sync_to_async
+def _mark_zero_contact_followup_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(
+        zero_contact_followup_count=company.zero_contact_followup_count + 1,
+        last_zero_contact_followup_date=timezone.localdate(),
+    )
+
+
+async def maybe_send_zero_contact_followup() -> dict:
+    """Send ats_zero_contact_followup template to shops that were approved but have
+    never sent a single message. Fires on day 2, 5, and 7 after approval, then stops —
+    still-silent shops after that need personal outreach (see #149), not more nudges."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_zero_contact_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    today = timezone.localdate()
+    for company in candidates:
+        if company.last_zero_contact_followup_date == today:
+            skipped.append(company.id)
+            continue
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping zero-contact followup", company.id)
+            skipped.append(company.id)
+            continue
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        lang = await _company_owner_lang(company)
+        try:
+            all_succeeded = True
+            for phone in phones:
+                success = await client.send_template_message(
+                    phone, "ats_zero_contact_followup", language_code=lang
+                )
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_zero_contact_followup_sent(company)
+                await _mark_automated_message_sent(company)
+                logger.info(
+                    "Zero-contact followup sent to company %s (attempt %s/%s)",
+                    company.id, company.zero_contact_followup_count + 1, len(_ZERO_CONTACT_FOLLOWUP_DAYS),
+                )
+                sent.append(company.id)
+            else:
+                logger.warning("Zero-contact followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send zero-contact followup to company %s", company.id)
+            skipped.append(company.id)
     return {"sent": sent, "skipped": skipped}

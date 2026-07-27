@@ -19,6 +19,30 @@ logger = logging.getLogger(__name__)
 _PRODUCT_CACHE_TTL_SECONDS = 60
 _PRODUCT_CACHE: dict[int | None, tuple[float, list[Product]]] = {}
 
+_PRICE_TOKEN_PATTERN = re.compile(
+    r"(?:[$R]|ZWG|dollars?|rand|cents?)\s*(\d+(?:[.,]\d+)?)"
+    r"|(\d+(?:[.,]\d+)?)\s*(?:[$R]|ZWG|dollars?|rand|cents?)",
+    re.IGNORECASE,
+)
+
+
+def _extract_literal_stated_price(message: str) -> Decimal | None:
+    """Best-effort extraction of the price token the owner actually typed,
+    used only to detect whether the LLM already resolved a total into a
+    per-unit price (see _apply_rule_based_price_hints). Returns None if
+    extraction is ambiguous (zero or multiple distinct candidates) — callers
+    must treat None as "can't tell" and fall back to existing behavior."""
+    candidates = set()
+    for a, b in _PRICE_TOKEN_PATTERN.findall(message):
+        raw = (a or b).replace(",", ".")
+        try:
+            candidates.add(Decimal(raw))
+        except Exception:
+            continue
+    if len(candidates) == 1:
+        return candidates.pop()
+    return None
+
 
 def _apply_rule_based_price_hints(
     message: str,
@@ -57,7 +81,12 @@ def _apply_rule_based_price_hints(
         r"\bumwe\b",     # Shona: one/each (Class 8)
     )
     per_unit_pattern = re.compile(r"(?:" + "|".join(per_unit_tokens) + r")", re.IGNORECASE)
-    has_per_unit_marker = bool(per_unit_pattern.search(message)) or "@" in message
+    has_per_unit_marker = (
+        bool(per_unit_pattern.search(message))
+        or "@" in message
+        or bool(re.search(r"\d[×x]\d", message))  # e.g. $1×16 or $1x16 (price×quantity)
+        or bool(re.search(r"[×x]\s*\d", message))  # e.g. "plate ×2 $1" (×quantity, per-unit)
+    )
 
     adjusted: list[ParsedSaleItem] = []
     for item in parsed_items:
@@ -67,7 +96,45 @@ def _apply_rule_based_price_hints(
             qty = 1
 
         if item.get("unit_price") is not None and qty > 1 and not has_per_unit_marker:
-            item = {**item, "unit_price": None}
+            raw_price = item["unit_price"]
+            try:
+                raw_price_dec = Decimal(str(raw_price))
+                qty_dec = Decimal(qty)
+            except Exception:
+                item = {**item, "unit_price": None, "price_ambiguous": True}
+            else:
+                literal_price = _extract_literal_stated_price(message)
+                llm_already_resolved = (
+                    literal_price is not None and literal_price != raw_price_dec
+                )
+                if llm_already_resolved:
+                    # The LLM's unit_price differs from the price literally
+                    # typed in the message — it already resolved a stated
+                    # total into a per-unit price itself (the prompt teaches
+                    # this by example for cases like "7 plates $7"). Trust
+                    # it as-is; don't re-derive or re-check anything, since
+                    # the checks below assume the price is still raw/unresolved.
+                    pass
+                else:
+                    has_cents = raw_price_dec != raw_price_dec.to_integral_value()
+                    if has_cents:
+                        # A price with a fractional/cents component (e.g.
+                        # $1.50, $0.25) is essentially never a stated total
+                        # in this domain — trust the LLM's per-unit
+                        # interpretation as-is rather than second-guessing
+                        # it with the divisibility check below, which only
+                        # makes sense for whole numbers.
+                        pass
+                    elif raw_price_dec % qty_dec == Decimal("0"):
+                        # Whole-number price divides exactly — stated price
+                        # is a total, resolve to unit price.
+                        # e.g. "7 plates $7" → $1 each, "7 plates $14" → $2 each
+                        item = {**item, "unit_price": raw_price_dec / qty_dec}
+                    else:
+                        # Whole-number, non-divisible — genuinely ambiguous
+                        # total-vs-unit, clear and flag for clarification.
+                        # e.g. "7 plates $15"
+                        item = {**item, "unit_price": None, "price_ambiguous": True}
 
         adjusted.append(item)
 

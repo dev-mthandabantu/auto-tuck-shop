@@ -13,6 +13,7 @@ import concurrent.futures
 import functools
 import json
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -73,8 +74,8 @@ def db_sync_to_async(func):
 
 _LOCALES_DIR = Path(__file__).parent.parent / "locales"
 _ALL_STRINGS = {
-    "en": json.loads((_LOCALES_DIR / "en.json").read_text()),
-    "sn": json.loads((_LOCALES_DIR / "sn.json").read_text()),
+    "en": json.loads((_LOCALES_DIR / "en.json").read_text(encoding="utf-8")),
+    "sn": json.loads((_LOCALES_DIR / "sn.json").read_text(encoding="utf-8")),
 }
 DEFAULT_LANGUAGE = "sn"
 
@@ -425,12 +426,19 @@ async def _process_message_async(
         company = user_profile.company if user_profile else None
         lang = user_profile.language if user_profile else DEFAULT_LANGUAGE
 
-        # Send typing indicator while LLM processes the message (if supported)
-        if settings.ENABLE_WHATSAPP_TYPING:
+        # Send typing indicator while LLM processes the message (if supported).
+        # Skip for short acknowledgements — they produce no reply and the typing flicker is confusing.
+        _SILENT_PATTERN = re.compile(
+            r"^\s*(ok|okay|thanks|thank you|thx|noted|cool|sure|yes|no|yep|nope|hi|hello|hey|makadii|ndatenda|zvakanaka|ehe|kwete)\s*[.!]?\s*$",
+            re.IGNORECASE,
+        )
+        _typing_sent = False
+        if settings.ENABLE_WHATSAPP_TYPING and not _SILENT_PATTERN.match(text):
             try:
                 client = get_whatsapp_client()
                 try:
                     await client.send_typing_indicator(sender, "typing_on", message_id=message_id)
+                    _typing_sent = True
                 except Exception:
                     logger.debug("Typing indicator not available or failed to send")
             except Exception:
@@ -448,7 +456,6 @@ async def _process_message_async(
 
         # Intercept closing time messages before hitting the LLM.
         if company:
-            import re as _re
             today = timezone.localdate()
             from apps.whatsapp.services.business_reports import (
                 parse_closing_time_llm,
@@ -457,9 +464,9 @@ async def _process_message_async(
             )
 
             # Detect "closes at X every day" — set permanent closing time.
-            _permanent_pattern = _re.compile(
+            _permanent_pattern = re.compile(
                 r"\b(every\s+day|always|daily|each\s+day|mazuva\s+ose|nguva\s+dzose)\b",
-                _re.IGNORECASE,
+                re.IGNORECASE,
             )
             if _permanent_pattern.search(text):
                 parsed_time = await parse_closing_time_llm(text)
@@ -489,7 +496,7 @@ async def _process_message_async(
             return
         finally:
             # Turn off typing indicator
-            if settings.ENABLE_WHATSAPP_TYPING:
+            if _typing_sent:
                 try:
                     client = get_whatsapp_client()
                     try:

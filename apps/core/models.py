@@ -38,6 +38,11 @@ class Company(models.Model):
     first_message_date = models.DateField(null=True, blank=True, help_text="Date of first inbound message — nudge eligibility starts here")
     last_nudge_date = models.DateField(null=True, blank=True, help_text="Last date a nudge was sent — prevents double-sending")
     nudge_stage = models.PositiveSmallIntegerField(default=0, help_text="Nudge sequence stage — increments after each send")
+    onboarding_followup_sent = models.BooleanField(default=False, help_text="ats_onboarding_followup template has been sent — don't send again")
+    last_reengagement_date = models.DateField(null=True, blank=True, help_text="Last date ats_reengagement template was sent — throttles re-sends to once per 7 days")
+    zero_contact_followup_count = models.PositiveSmallIntegerField(default=0, help_text="Number of ats_zero_contact_followup sends for a shop that has never sent a single message — stops at 3 (day 2/5/7 after approval)")
+    last_zero_contact_followup_date = models.DateField(null=True, blank=True, help_text="Last date ats_zero_contact_followup was sent — prevents double-sending same day")
+    last_automated_message_date = models.DateField(null=True, blank=True, help_text="Last date any automated nudge/followup message was sent to this company — prevents two different nudge mechanisms firing same-day")
 
     def format_price(self, amount):
         """Format a price using this company's currency."""

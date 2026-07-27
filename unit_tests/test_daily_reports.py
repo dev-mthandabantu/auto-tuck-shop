@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from apps.whatsapp.services.business_reports import BusinessSnapshot, build_comparison_context
+from apps.whatsapp.services.business_reports import BusinessSnapshot, build_comparison_context, format_business_summary
 from apps.whatsapp.services.report_card import generate_stat_card
 
 
@@ -32,6 +32,43 @@ def _make_snapshot(revenue=Decimal("100.00"), sales_count=5, report_date=None, c
         low_stock_items=[],
         out_of_stock_items=[],
     )
+
+
+class FormatBusinessSummaryTest(TestCase):
+    """Regression tests for #246 — revenue must never be labeled with
+    company.currency when it wasn't the currency actually present in the
+    day's sales."""
+
+    def test_single_currency_not_company_default(self):
+        snapshot = _make_snapshot(
+            revenue=Decimal("204.00"),
+            sales_count=2,
+            currency_revenues={"ZAR": Decimal("204.00")},
+        )
+        result = format_business_summary(snapshot)
+        self.assertIn("R204.00", result)
+        self.assertNotIn("$204.00", result)
+        self.assertNotIn("$204", result)
+
+    def test_multi_currency_unaffected(self):
+        snapshot = _make_snapshot(
+            revenue=Decimal("60.00"),
+            sales_count=2,
+            currency_revenues={"USD": Decimal("10.00"), "ZAR": Decimal("50.00")},
+        )
+        result = format_business_summary(snapshot)
+        self.assertIn("$10.00", result)
+        self.assertIn("R50.00", result)
+        self.assertIn("+", result)
+
+    def test_zero_sales_unaffected(self):
+        snapshot = _make_snapshot(
+            revenue=Decimal("0.00"),
+            sales_count=0,
+            currency_revenues={},
+        )
+        result = format_business_summary(snapshot)
+        self.assertIn("Quiet day", result)
 
 
 class ReportCardGenerationTest(TestCase):

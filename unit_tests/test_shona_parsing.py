@@ -201,3 +201,96 @@ class ShonaParsingTestCase(TestCase):
         result = self._parse("Hi")
         self.assertEqual(result.intent, "other")
         self.assertEqual(result.other_sub_intent, "greeting")
+
+    # ------------------------------------------------------------------
+    # ×-quantity suffix — regression for #190
+    # ------------------------------------------------------------------
+
+    def test_multiplication_sign_quantity(self):
+        """'Plate Beef $1×16' → 16 × Plate Beef @ $1.00 (× suffix = quantity)."""
+        result = self._parse("Plate Beef $1×16")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 16)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertEqual(result.currency, "USD")
+
+    # ------------------------------------------------------------------
+    # ambiguous total-vs-unit price — regression for #220
+    # ------------------------------------------------------------------
+
+    def test_ambiguous_price_flagged_not_guessed(self):
+        """'4 games $1 sale' — no per-unit marker, qty > 1, 1 % 4 ≠ 0 — price is
+        ambiguous (total vs per-unit). Must be cleared and flagged rather than
+        silently treated as a $1-per-unit price or falling back to a stale stored price."""
+        result = self._parse("4 games $1 sale")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertEqual(item["quantity"], 4)
+        self.assertIsNone(item["unit_price"])
+        self.assertTrue(item.get("price_ambiguous"))
+
+    def test_price_equals_qty_implies_one_dollar_each(self):
+        """'7 plates beef $7' → 7 × Plate Beef @ $1.00 (7 ÷ 7 = $1 exactly)."""
+        result = self._parse("7 plates beef $7")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 7)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    def test_price_divisible_by_qty_resolves_unit_price(self):
+        """'7 plates beef $14' → 7 × Plate Beef @ $2.00 (14 ÷ 7 = $2 exactly)."""
+        result = self._parse("7 plates beef $14")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertEqual(item["quantity"], 7)
+        self.assertEqual(item["unit_price"], Decimal("2.00"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    def test_cents_price_per_unit_not_ambiguous(self):
+        """Regression: '3 chips $1.50' — a price with cents is essentially
+        never a stated total in this domain. Must resolve to $1.50 each with
+        NO ambiguity, matching the documented PARSING EXAMPLES entry in
+        prompts.py — the divisibility check (added for the #173 whole-number
+        cases above) must not override a correctly-parsed cents price just
+        because 1.50 % 3 != 0."""
+        result = self._parse("3 chips $1.50")
+        self.assertEqual(result.intent, "sale")
+        item = result.items[0]
+        self.assertIn("chips", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 3)
+        self.assertEqual(item["unit_price"], Decimal("1.50"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    # ------------------------------------------------------------------
+    # ×N as a per-unit quantity marker, fraction/half portions — regression for #173
+    # ------------------------------------------------------------------
+
+    def test_product_x_quantity_before_separate_price(self):
+        """'Chicken plate ×2 $1' → 2 x Chicken plate @ $1.00 each (NOT $0.50 each —
+        ×N here marks per-unit quantity, distinct from the '$1×16' price×qty suffix)."""
+        result = self._parse("Chicken plate ×2 $1")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("chicken", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 2)
+        self.assertEqual(item["unit_price"], Decimal("1.00"))
+        self.assertFalse(item.get("price_ambiguous"))
+
+    def test_half_portion_is_distinct_product_not_fractional_quantity(self):
+        """'1/2 Plate beef $0.50' → quantity=1 of a half-portion product variant,
+        not quantity=0 (a half plate is a distinct catalog item, not a fraction
+        of a whole plate — SaleItem.quantity is a PositiveIntegerField)."""
+        result = self._parse("1/2 Plate beef $0.50")
+        self.assertEqual(result.intent, "sale")
+        self.assertEqual(len(result.items), 1)
+        item = result.items[0]
+        self.assertIn("beef", item["product_name"].lower())
+        self.assertEqual(item["quantity"], 1)
+        self.assertEqual(item["unit_price"], Decimal("0.50"))

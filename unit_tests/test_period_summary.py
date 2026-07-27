@@ -117,6 +117,20 @@ class FormatPeriodSummaryTest(TestCase):
         self.assertIn("3 sales", result)
         self.assertIn("Coke", result)
 
+    def test_single_currency_not_company_default(self):
+        """Regression test for #246 — the period's actual currency (ZAR) must
+        be shown even though the company's configured default is USD."""
+        data = {
+            "sales_count": 1,
+            "revenue": Decimal("10.00"),
+            "currency_revenues": {"ZAR": Decimal("10.00")},
+            "currency": "USD",
+            "top_products": [],
+        }
+        result = format_period_summary("This week", data)
+        self.assertIn("R10.00", result)
+        self.assertNotIn("$10.00", result)
+
     def test_multi_currency_shows_both(self):
         data = {
             "sales_count": 2,

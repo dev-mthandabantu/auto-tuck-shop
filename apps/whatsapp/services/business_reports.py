@@ -11,20 +11,23 @@ from typing import Iterable
 logger = logging.getLogger(__name__)
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
 
 from apps.catalog.models import Product
-from apps.core.currencies import format_price
+from apps.core.currencies import DEFAULT_CURRENCY, format_price
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale, SaleItem
 from apps.inventory.models import InventoryAdjustment
+from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
 
 
 LOW_STOCK_THRESHOLD = 5
 FALLBACK_SUMMARY_CUTOFF = time(21, 0)
+WHATSAPP_SERVICE_WINDOW = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -111,6 +114,18 @@ def _company_recipients(company: Company) -> list[str]:
     return phones or []
 
 
+def _within_service_window(phone: str) -> bool:
+    """True if `phone` sent an inbound WhatsApp message within the last 24
+    hours (Meta's customer-service window) — meaning free-form/image
+    messages are currently permitted for this recipient."""
+    cutoff = timezone.now() - WHATSAPP_SERVICE_WINDOW
+    return WhatsAppMessage.objects.filter(
+        phone_number=phone,
+        direction=WhatsAppMessage.Direction.INBOUND,
+        timestamp__gte=cutoff,
+    ).exists()
+
+
 def _day_bounds(day: datetime.date) -> tuple[datetime, datetime]:
     start = timezone.make_aware(datetime.combine(day, time.min))
     end = timezone.make_aware(datetime.combine(day, time.max))
@@ -183,18 +198,29 @@ def build_business_snapshot(company: Company, report_date: datetime.date | None 
     )
 
 
+def _display_revenue(currency_revenues: dict[str, Decimal]) -> str:
+    """Format a revenue amount for WhatsApp display.
+
+    Never assumes a currency that wasn't actually present in the underlying
+    transactions — company.currency is NOT used here, since a shop's actual
+    transaction currency on a given day/period may differ from their
+    configured default.
+    """
+    if not currency_revenues:
+        return format_price(Decimal("0.00"), DEFAULT_CURRENCY)
+    if len(currency_revenues) == 1:
+        cur, amt = next(iter(currency_revenues.items()))
+        return format_price(amt, cur)
+    return " + ".join(format_price(amt, cur) for cur, amt in currency_revenues.items())
+
+
 def format_business_summary(snapshot: BusinessSnapshot) -> str:
     """Render a human-readable business summary message."""
     date_label = snapshot.report_date.strftime("%d %b %Y")
     sale_word = f"{snapshot.sales_count} sale{'s' if snapshot.sales_count != 1 else ''}"
     lines = [f"Summary for {date_label}"]
 
-    if len(snapshot.currency_revenues) <= 1:
-        revenue_str = format_price(snapshot.revenue, snapshot.currency)
-        lines.append(f"Revenue: {revenue_str} from {sale_word}")
-    else:
-        parts = " + ".join(format_price(amt, cur) for cur, amt in snapshot.currency_revenues.items())
-        lines.append(f"Revenue: {parts} from {sale_word}")
+    lines.append(f"Revenue: {_display_revenue(snapshot.currency_revenues)} from {sale_word}")
 
     if snapshot.top_products:
         lines.append("")
@@ -234,7 +260,14 @@ def format_low_stock_summary(snapshot: BusinessSnapshot) -> str:
 
 def format_profit_summary(snapshot: BusinessSnapshot) -> str:
     lines = [f"Profit summary for {snapshot.report_date.strftime('%d %b %Y')}:"]
-    lines.append(f"- Revenue: {format_price(snapshot.revenue, snapshot.currency)}")
+    lines.append(f"- Revenue: {_display_revenue(snapshot.currency_revenues)}")
+    # NOTE: cost/gross_profit are not tracked per-currency (cost tracking is not
+    # yet implemented — always 0.00, see BusinessSnapshot.cost). Using
+    # snapshot.currency here remains inaccurate whenever a shop's actual currency
+    # differs from company.currency; fixing this fully requires a per-currency
+    # cost data model, out of scope here. format_profit_summary/send_profit_summary
+    # have no callers in the live pilot flow (confirmed via repo-wide grep) — see
+    # tracking issue for profit tracking as a stub.
     lines.append(f"- Product cost: {format_price(snapshot.cost, snapshot.currency)}")
     lines.append(f"- Gross profit: {format_price(snapshot.gross_profit, snapshot.currency)}")
     lines.append("- Expenses: not tracked separately yet")
@@ -391,11 +424,7 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
 def format_period_summary(period_label: str, data: dict) -> str:
     if data["sales_count"] == 0:
         return f"{period_label}: No sales recorded."
-    currency_revenues = data.get("currency_revenues", {})
-    if len(currency_revenues) > 1:
-        revenue_str = " + ".join(format_price(amt, cur) for cur, amt in currency_revenues.items())
-    else:
-        revenue_str = format_price(data["revenue"], data["currency"])
+    revenue_str = _display_revenue(data.get("currency_revenues", {}))
     sale_word = f"{data['sales_count']} sale{'s' if data['sales_count'] != 1 else ''}"
     lines = [f"{period_label}: {revenue_str} from {sale_word}"]
     if data["top_products"]:
@@ -454,7 +483,25 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
     wa_client = get_whatsapp_client()
     recipients = await sync_to_async(_company_recipients, thread_sensitive=True)(company)
     for phone in recipients:
-        if image_url:
+        use_template = False
+        if settings.USE_TEMPLATE_MESSAGES:
+            in_window = await sync_to_async(_within_service_window, thread_sensitive=True)(phone)
+            use_template = not in_window
+
+        if use_template:
+            from apps.whatsapp.services.nudge_service import _template_name_for_lang
+            revenue_str = _display_revenue(snapshot.currency_revenues)
+            top_seller = snapshot.top_products[0][0] if snapshot.top_products else "—"
+            components = [{"type": "body", "parameters": [
+                {"type": "text", "text": snapshot.report_date.strftime("%d %b %Y")},
+                {"type": "text", "text": revenue_str},
+                {"type": "text", "text": str(snapshot.sales_count)},
+                {"type": "text", "text": top_seller},
+            ]}]
+            lang = await sync_to_async(_company_owner_lang, thread_sensitive=True)(company)
+            template_name = _template_name_for_lang("ats_daily_summary", lang)
+            await wa_client.send_template_message(phone, template_name, components=components)
+        elif image_url:
             await wa_client.send_image(phone, image_url, caption=text_summary)
         else:
             await wa_client.send_message(phone, text_summary)
@@ -485,17 +532,15 @@ async def maybe_send_daily_notifications(now: datetime | None = None) -> dict[st
     now = now or timezone.now()
     today = timezone.localdate(now)
     current_time = timezone.localtime(now).time()
-    prompt_cutoff = time(17, 0)
 
     companies = await load_active_companies()
-    sent_prompt: list[int] = []
     sent_summary: list[int] = []
 
     for company in companies:
         closing_set_today = company.daily_closing_date == today and company.daily_closing_time
 
         if company.normal_closing_time:
-            # Owner has set a permanent closing time — no daily prompt needed.
+            # Owner has set a permanent closing time.
             # Send the summary 1 hour after their normal closing time.
             summary_time = (
                 datetime.combine(today, company.normal_closing_time) + timedelta(hours=1)
@@ -504,28 +549,15 @@ async def maybe_send_daily_notifications(now: datetime | None = None) -> dict[st
                 await send_daily_summary(company, report_date=today)
                 sent_summary.append(company.id)
         else:
-            # No permanent closing time — use the daily prompt flow.
-            if (
-                company.last_closing_prompt_date != today
-                and current_time >= prompt_cutoff
-                and not closing_set_today
-            ):
-                await send_daily_closing_prompt(company)
-                sent_prompt.append(company.id)
-
             if company.last_summary_date != today:
                 if closing_set_today:
                     effective_close = _effective_closing_time(company, today)
                     if current_time >= effective_close:
                         await send_daily_summary(company, report_date=today)
                         sent_summary.append(company.id)
-                elif (
-                    company.last_closing_prompt_date == today
-                    and not closing_set_today
-                    and current_time >= FALLBACK_SUMMARY_CUTOFF
-                ):
-                    # Owner never replied — send anyway at 9pm
+                elif current_time >= FALLBACK_SUMMARY_CUTOFF:
+                    # No closing time set — send summary at 9pm fallback
                     await send_daily_summary(company, report_date=today)
                     sent_summary.append(company.id)
 
-    return {"prompt": sent_prompt, "summary": sent_summary}
+    return {"prompt": [], "summary": sent_summary}
