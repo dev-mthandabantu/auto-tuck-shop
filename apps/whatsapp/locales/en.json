@@ -1,6 +1,7 @@
 {
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
+        "prompt_with_first_message": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:\n\nWe saved your message — once approved you can send it again or we'll ask you to confirm it.",
         "btn_en": "English",
         "btn_sn": "Shona",
         "confirmed": "Language set to English."

@@ -143,11 +143,12 @@ async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
     if not created:
         logger.info("Duplicate new-user message from %s, skipping prompt", phone_number)
         return
+    prompt_key = "language.prompt_with_first_message" if text.strip() else "language.prompt"
     buttons = [
         {"id": f"lang_en_{entry.id}", "title": t("language.btn_en")},
         {"id": f"lang_sn_{entry.id}", "title": t("language.btn_sn")},
     ]
-    message_sid = await _send_response_with_buttons(sender, t("language.prompt"), buttons)
+    message_sid = await _send_response_with_buttons(sender, t(prompt_key), buttons)
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
 
