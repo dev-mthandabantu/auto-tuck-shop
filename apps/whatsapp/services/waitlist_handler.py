@@ -24,6 +24,35 @@ from apps.whatsapp.services.webhook_handler import (
 
 logger = logging.getLogger(__name__)
 
+# Common greetings that should not be accepted as company names
+_GREETING_WORDS = frozenset([
+    "hi", "hello", "hie", "hey", "greetings", "yo",
+    "howdy", "g'day", "sup", "wassup", "watsup",
+    "namaste", "salaam", "salaam alaikum",
+])
+
+
+def _is_valid_company_name(text: str) -> bool:
+    """Check if text looks like a plausible company name (not just a greeting or empty).
+    
+    Rejects common greetings (case-insensitive, whole word match only).
+    Returns True if text passes validation.
+    """
+    cleaned = text.strip().lower()
+    if not cleaned:
+        return False
+    
+    # Check if the entire message (single word) is a greeting
+    # For multi-word entries, only check the first word
+    words = cleaned.split()
+    first_word = words[0]
+    
+    if first_word in _GREETING_WORDS:
+        return False
+    
+    return True
+
+
 
 @db_sync_to_async
 def _create_waitlist_entry(phone_number: str, first_message: str) -> tuple[WaitlistEntry, bool]:
@@ -156,10 +185,15 @@ async def process_waitlisted_message_async(sender: str, text: str, waitlist_entr
     lang = waitlist_entry.language
     if waitlist_entry.status == WaitlistEntry.Status.PENDING:
         if not waitlist_entry.company_name and text.strip():
-            await _update_waitlist_company_name(waitlist_entry.id, text.strip())
-            waitlist_entry.company_name = text.strip()
-            await _send_response(sender, t("waitlist.shop_name_noted", lang=lang, shop_name=text.strip()))
-            await _send_waitlist_admin_notification(waitlist_entry)
+            # Validate that this looks like a real company name, not a greeting
+            if _is_valid_company_name(text):
+                await _update_waitlist_company_name(waitlist_entry.id, text.strip())
+                waitlist_entry.company_name = text.strip()
+                await _send_response(sender, t("waitlist.shop_name_noted", lang=lang, shop_name=text.strip()))
+                await _send_waitlist_admin_notification(waitlist_entry)
+            else:
+                # Text looks like a greeting or noise — re-prompt for shop name
+                await _send_response(sender, t("waitlist.shop_name_prompt", lang=lang))
         else:
             await _send_response(sender, t("waitlist.still_pending", lang=lang))
     elif waitlist_entry.status == WaitlistEntry.Status.REJECTED:
