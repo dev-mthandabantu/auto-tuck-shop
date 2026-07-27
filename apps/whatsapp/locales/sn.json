@@ -59,6 +59,7 @@
         "btn_reports_yes": "Ehe, gadzirisa",
         "btn_reports_no": "Kwete iye zvino",
         "reports_declined": "Zvakanaka — unogona kundibvunza *ndakaita mari ngapi nhasi?* nguva ipi neipi.",
+        "never_activated_first_sale": "Hatizati takutorairwa. Moda kurecoda kutengesa kwekutanga? Ndiudze zvawatengesa — semuenzaniso *2 Mazoe $1 rimwe*",
         "retention_no_sales_today": "Hausati wanyora zvawatengesa nhasi — watengesa chii?",
         "retention_streak": "Une {streak} mazuva ekutengesa! Ramba wakadaro — nhasi watengesa chii?",
         "retention_yesterday_recap": "Nezuro wakarecoda {count} ma sales aine {currency}{total}. Wedzera yenhasi?",

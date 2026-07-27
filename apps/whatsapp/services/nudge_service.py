@@ -130,6 +130,10 @@ def _eligible_ctas(context: dict) -> list[dict]:
         add("onboarding_shona_tip")
         add("onboarding_reports", cta_type="button")
 
+    # Never activated post-approval (past onboarding, no sales yet)
+    if days is not None and days > _ONBOARDING_DAYS and context.get("last_active_days_ago") is None:
+        add("never_activated_first_sale")
+
     # Retention — only if shop has prior sales history
     if context.get("last_active_days_ago") is not None:
         add("retention_no_sales_today")

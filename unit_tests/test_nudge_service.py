@@ -175,6 +175,26 @@ class EligibleCtasTest(TransactionTestCase):
         keys = [c["key"] for c in _eligible_ctas(context)]
         self.assertIn("retention_no_sales_today", keys)
 
+    def test_never_activated_cta_excluded_within_onboarding(self):
+        """Shop within 14-days onboarding window should not get never_activated CTA."""
+        context = {"days_since_onboarding": 7, "streak": 0, "last_active_days_ago": None, "features_used": [], "nudge_stage": 0}
+        keys = [c["key"] for c in _eligible_ctas(context)]
+        self.assertNotIn("never_activated_first_sale", keys)
+        self.assertIn("onboarding_first_sale", keys)
+
+    def test_never_activated_cta_included_after_onboarding(self):
+        """Shop past 14-days onboarding with no sales should get never_activated_first_sale CTA."""
+        context = {"days_since_onboarding": 20, "streak": 0, "last_active_days_ago": None, "features_used": [], "nudge_stage": 0}
+        keys = [c["key"] for c in _eligible_ctas(context)]
+        self.assertIn("never_activated_first_sale", keys)
+        self.assertNotIn("onboarding_first_sale", keys)
+
+    def test_never_activated_cta_excluded_if_shop_has_sales(self):
+        """Shop with sales history should not get never_activated_first_sale even if past onboarding."""
+        context = {"days_since_onboarding": 20, "streak": 0, "last_active_days_ago": 1, "features_used": [], "nudge_stage": 0}
+        keys = [c["key"] for c in _eligible_ctas(context)]
+        self.assertNotIn("never_activated_first_sale", keys)
+
 
 class MaybeSendNudgesTest(TransactionTestCase):
 
