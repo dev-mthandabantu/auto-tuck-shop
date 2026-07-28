@@ -52,6 +52,8 @@ Before starting any task, read the relevant context:
 - **Unit tests:** `python manage.py test unit_tests`
 - **Staging integration tests (manual only):** `python -m pytest tests/ -x` (requires `.env.staging`) — not run in CI, see #82
 
+**Confidential/strategic content** (partner trust assessments, funding, team structure, corporate/legal, commercial negotiations): goes in `aakitech/internal` (private, no code — discussions/issues only), not here — this repo is visible to pilot contacts and future interns. See discussion #14 there for rationale.
+
 ## Docs index
 
 Documentation lives in `docs/` in this repo. Read the relevant file before starting any task. Update docs in the same PR as any behaviour change.
