@@ -15,6 +15,7 @@ TEST_PHONES = {
     "+27794979611",  # Gwenyambira & Sons — Kundai/internal test
     "+260954312554",  # Innocent — BOQ contact, not a pilot shop
     "+27746764737",  # Mukusakusa — Brighton's friend in Cape Town, not a pilot shop (see discussion #167)
+    "+263786559354",  # Chibuwe — Bradley's own test account, not a pilot shop
 }
 
 
