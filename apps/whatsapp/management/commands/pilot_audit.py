@@ -7,7 +7,15 @@ from apps.core.models import Company, UserProfile, WaitlistEntry
 from apps.sales.models import Sale
 from apps.whatsapp.models import WhatsAppMessage
 
-TEST_PHONES = {"+27644178150", "+27610869293"}
+TEST_PHONES = {
+    "+27644178150",
+    "+27610869293",
+    "+27641295093",  # Admin — Brighton's own test/admin number
+    "+263789848070",  # Test QA
+    "+27794979611",  # Gwenyambira & Sons — Kundai/internal test
+    "+260954312554",  # Innocent — BOQ contact, not a pilot shop
+    "+27746764737",  # Mukusakusa — Brighton's friend in Cape Town, not a pilot shop (see discussion #167)
+}
 
 
 def _is_test(company):
