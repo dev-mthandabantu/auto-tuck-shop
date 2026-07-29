@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from django.contrib.auth.models import User
 from django.db import close_old_connections, IntegrityError
@@ -23,6 +24,12 @@ from apps.whatsapp.services.webhook_handler import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Greetings sent as the shop-name prompt response — reject rather than
+# capture verbatim as company_name (see #256, e.g. a shop named "Hello").
+_GREETING_PATTERN = re.compile(
+    r"^\s*(hi|hie|hey|hello|makadii|mhoro|yo)\s*[.!?]?\s*$", re.IGNORECASE
+)
 
 
 @db_sync_to_async
@@ -150,15 +157,22 @@ async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
     message_sid = await _send_response_with_buttons(sender, t("language.prompt"), buttons)
     if message_sid:
         await _store_waitlist_response_message_sid(entry.id, message_sid)
+    if text.strip():
+        # Their first message may have been a real sale attempt — acknowledge
+        # it instead of silently discarding it (see #255).
+        await _send_response(sender, t("waitlist.first_message_noted"))
 
 
 async def process_waitlisted_message_async(sender: str, text: str, waitlist_entry: WaitlistEntry) -> None:
     lang = waitlist_entry.language
     if waitlist_entry.status == WaitlistEntry.Status.PENDING:
-        if not waitlist_entry.company_name and text.strip():
-            await _update_waitlist_company_name(waitlist_entry.id, text.strip())
-            waitlist_entry.company_name = text.strip()
-            await _send_response(sender, t("waitlist.shop_name_noted", lang=lang, shop_name=text.strip()))
+        stripped = text.strip()
+        if not waitlist_entry.company_name and stripped and _GREETING_PATTERN.match(stripped):
+            await _send_response(sender, t("waitlist.greeting_prompt_shop_name", lang=lang))
+        elif not waitlist_entry.company_name and stripped:
+            await _update_waitlist_company_name(waitlist_entry.id, stripped)
+            waitlist_entry.company_name = stripped
+            await _send_response(sender, t("waitlist.shop_name_noted", lang=lang, shop_name=stripped))
             await _send_waitlist_admin_notification(waitlist_entry)
         else:
             await _send_response(sender, t("waitlist.still_pending", lang=lang))

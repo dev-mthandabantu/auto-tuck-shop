@@ -7,7 +7,9 @@
     },
     "waitlist": {
         "welcome": "Waiswa pawaitlist yedu.\n\nMumwe wedu achaverenga chikumbiro chako ogamuchira account yako munguva pfupi. Tichakutumira message kana wagamuchirwa.\n\nPanguva ino tumira imwe message nezita reshop yako.",
+        "first_message_noted": "Tachengeta message yako. Kana account yako yagamuchirwa, tumirazve (kana kuti tichakubatsira kuirekoda ipapo).",
         "shop_name_noted": "Tatenda! Taziva zita reshop yako \"{shop_name}\".\n\nUchiri pakumirira. Tichaverenga chikumbiro chako munguva pfupi.",
+        "greeting_prompt_shop_name": "Tatenda! Shop yako inonzi chii?",
         "still_pending": "Tatenda ne message yako! Uchiri pakumirira pa waitlist.\n\nTichaverenga chikumbiro chako munguva pfupi. Tichakutumira message kana wagamuchirwa.",
         "rejected": "Sorry, hatikwanisi kugamuchira chikumbiro chako. Bata agent wedu kana uchifunga kuti pakanganisika.",
         "already_processed": "Chikumbiro ichi chakagara chaitwa"

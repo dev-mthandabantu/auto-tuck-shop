@@ -7,7 +7,9 @@
     },
     "waitlist": {
         "welcome": "You have been added to our waitlist.\n\nAn administrator will review your request and approve your account shortly. We will send you a message when you are approved.\n\nIn the meantime, please send another message with your shop name.",
+        "first_message_noted": "We saved your message. Once your account is approved, please send it again (or we'll help you record it then).",
         "shop_name_noted": "Thank you! We have noted your shop name as \"{shop_name}\".\n\nYou are still on our waitlist. An administrator will review your request soon.",
+        "greeting_prompt_shop_name": "Thanks! What is your shop called?",
         "still_pending": "Thank you for your message! You are still on our waitlist.\n\nAn administrator will review your request soon. We will notify you when your account is approved.",
         "rejected": "Sorry, your request to join was not approved. Please contact support if you believe this is an error.",
         "already_processed": "Waitlist entry already processed or not found"
