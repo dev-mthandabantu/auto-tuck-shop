@@ -11,7 +11,7 @@ Meta WhatsApp Business API
         v
 Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
     +-- app machines (Gunicorn)
-    +-- cron machine (send_daily_reports every 15 min)
+        +-- cron machine (send_daily_reports every 15 min; pilot_health_alert daily)
     +-- PostgreSQL (Fly managed)
         |
         +-- OpenRouter (Gemini 2.5 Flash) -- LLM parsing
@@ -82,7 +82,7 @@ Releases follow semver patch bumps (v0.1.0 -> v0.1.1). Only Brighton publishes r
 | `R2_ENDPOINT_URL` | Yes | `https://{account-id}.r2.cloudflarestorage.com` -- must match the account the token belongs to |
 | `R2_BUCKET_NAME` | Yes | `auto-tuck-shop-production` or `auto-tuck-shop-staging` |
 | `R2_PUBLIC_URL` | No | Public URL prefix for serving report card images |
-| `ADMIN_PHONE_NUMBER` | Yes | WhatsApp number for admin notifications |
+| `ADMIN_PHONE_NUMBER` | Yes | WhatsApp number for admin notifications and pilot health alerts |
 | `SENTRY_DSN` | No | Error tracking |
 | `USE_MOCK_WHATSAPP` | Staging only | Must be `False` or unset on production |
 | `GEMINI_API_KEY` | No | Direct Gemini fallback (not currently used) |

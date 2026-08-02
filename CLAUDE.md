@@ -46,7 +46,7 @@ Before starting any task, read the relevant context:
 - **Architecture, data model, flows, async model:** `docs/Architecture.md`
 - **Pilot launch sequence and success metrics:** `docs/Pilot-Launch.md`
 - **All external service integrations:** `docs/Integrations.md`
-- **Key service entry points:** `apps/whatsapp/services/` — webhook_handler (main entry), sale_handler, waitlist_handler, business_reports, nudge_service, media_handler, message_parser, report_card, whatsapp_client
+- **Key service entry points:** `apps/whatsapp/services/` — webhook_handler (main entry), sale_handler, waitlist_handler, business_reports, nudge_service, pilot_health, media_handler, message_parser, report_card, whatsapp_client
 - **LLM system prompt (tune for parsing improvements):** `services/openrouter/prompts.py`
 - **User-facing strings (EN + Shona):** `apps/whatsapp/locales/en.json`, `sn.json`
 - **Unit tests:** `python manage.py test unit_tests`
