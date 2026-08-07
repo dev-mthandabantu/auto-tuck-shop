@@ -291,6 +291,12 @@ class AssistantWelcomeTemplateTest(TransactionTestCase):
     def setUp(self):
         self.company = _make_company("Assistant Shop")
         self.owner = _make_owner(self.company, "+263771003003")
+        # _make_owner leaves language unset, which defaults to Shona (see
+        # UserProfile.language). These tests assert English fallback copy,
+        # so make the owner's language explicit rather than relying on the
+        # UserProfile model default.
+        self.owner.language = "en"
+        self.owner.save(update_fields=["language"])
 
     def test_sends_template_to_assistant_when_flag_enabled(self):
         send_response_mock = AsyncMock()

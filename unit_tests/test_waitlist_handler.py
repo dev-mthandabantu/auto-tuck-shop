@@ -8,6 +8,7 @@ from django.test import TransactionTestCase
 
 from apps.core.models import WaitlistEntry
 from apps.whatsapp.services.waitlist_handler import (
+    _send_waitlist_admin_notification,
     process_new_waitlist_entry_async,
     process_waitlisted_message_async,
 )
@@ -108,3 +109,49 @@ class ProcessWaitlistedMessageGreetingTest(TransactionTestCase):
         self.assertEqual(self.entry.company_name, "Existing Shop")
         notify_mock.assert_not_called()
         send_response_mock.assert_called_once()
+
+
+class SendWaitlistAdminNotificationTest(TransactionTestCase):
+    """Regression for #281 — outside the 24h window, the admin notification
+    must fall back to the approved ats_admin_new_signup template, not
+    ats_reengagement (which is written for a dormant shop owner, not an
+    admin alert — see #199)."""
+
+    def setUp(self):
+        self.entry = WaitlistEntry.objects.create(
+            phone_number="+263771000700",
+            first_message="Sold 2 Mazoe $1 each",
+            status=WaitlistEntry.Status.PENDING,
+        )
+
+    def test_falls_back_to_admin_new_signup_template_when_buttons_fail(self):
+        client_mock = AsyncMock()
+        send_template_mock = AsyncMock()
+        client_mock.send_template_message = send_template_mock
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value=None)), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=client_mock):
+                await _send_waitlist_admin_notification(self.entry)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        args, kwargs = send_template_mock.call_args
+        self.assertEqual(args[1], "ats_admin_new_signup")
+        components = kwargs["components"]
+        params = components[0]["parameters"]
+        self.assertEqual(params[0]["text"], "+263771000700")
+        self.assertEqual(params[1]["text"], "Sold 2 Mazoe $1 each")
+        self.assertIn("fly.dev/admin", params[2]["text"])
+
+    def test_does_not_use_template_fallback_when_buttons_succeed(self):
+        send_template_mock = AsyncMock()
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value="sid_1")), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client") as get_client_mock:
+                get_client_mock.return_value.send_template_message = send_template_mock
+                await _send_waitlist_admin_notification(self.entry)
+
+        _run(_run_test())
+        send_template_mock.assert_not_called()
