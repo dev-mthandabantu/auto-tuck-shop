@@ -138,6 +138,19 @@ async def _send_response_with_buttons(
     return await client.send_message_with_buttons(to, message, buttons, reply_to=reply_to)
 
 
+def _send_fallback_error(sender: str, user_profile: UserProfile | None) -> None:
+    """Best-effort reply so an unhandled downstream failure is never fully silent to the user.
+
+    Called from the outer except blocks in the handle_incoming_* entry points, which
+    previously only logged — leaving the shop owner with no reply at all on WhatsApp.
+    """
+    lang = user_profile.language if user_profile else DEFAULT_LANGUAGE
+    try:
+        run_async(_send_response(sender, t("error.processing_failed", lang=lang)))
+    except Exception:
+        logger.exception("Failed to send fallback error reply to %s", sender)
+
+
 # ---------------------------------------------------------------------------
 # Public entry points (called from views.py)
 # ---------------------------------------------------------------------------
@@ -248,6 +261,7 @@ def handle_incoming_message(
             run_async(_process_message_async(message_id, sender, text, user_profile))
         except Exception as e:
             logger.exception(f"Error handling message {message_id}: {e}")
+            _send_fallback_error(sender, user_profile)
 
 
 def handle_incoming_audio_message(
@@ -270,6 +284,7 @@ def handle_incoming_audio_message(
             run_async(process_audio_message_async(message_id, sender, media_id, user_profile))
         except Exception as e:
             logger.exception(f"Error handling audio message {message_id}: {e}")
+            _send_fallback_error(sender, user_profile)
 
 
 async def _process_media_message_async(
@@ -337,6 +352,7 @@ def handle_incoming_media_message(
             run_async(_process_media_message_async(message_id, sender, r2_url, media_type, user_profile))
         except Exception as e:
             logger.exception(f"Error handling media message {message_id}: {e}")
+            _send_fallback_error(sender, user_profile)
 
 
 async def _handle_sales_query(
@@ -528,11 +544,14 @@ async def _process_message_async(
 
         if result.intent == "other":
             sub = result.other_sub_intent
-            if sub == "greeting":
+            # The LLM's "greeting" bucket also catches non-filler content it can't otherwise
+            # classify (e.g. a bare emoji, "switch to Shona") — only stay silent when the raw
+            # text itself is a recognised filler word/phrase, never on the LLM label alone.
+            if sub == "greeting" and _SILENT_PATTERN.match(text):
                 pass  # No response — replying to "hi" / "thanks" adds noise
             elif sub == "question":
                 await _send_response(sender, t("other.question", lang=lang))
-            else:  # deferral or unknown
+            else:  # deferral, unknown, or a "greeting" that wasn't a recognised filler word
                 await _send_response(sender, t("other.deferral", lang=lang))
             return
 
