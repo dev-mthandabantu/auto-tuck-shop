@@ -25,6 +25,10 @@ Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or vo
 | Madrena | Junior developer | @dev-mthandabantu |
 | Jasper | Intern — generalist developer | @dev-jaspher |
 | Bradley | Field/business, pilot shop relationships | @bradleychibuwe105-coder |
+| Kundai | Tech lead / co-owner | @KundaiClayton |
+| Law | QA & Product Quality Lead; partner relationships; funding pipeline (across ATS, BOQ, AgriData) | @law001-mugah |
+| Tafadzwa | QA Intern (ATS audit), reports to Law | @TafadzwaGwangwaya |
+| Omar | Intern — cross-product generalist, reports to Brighton (QA tasks to Law) | @O-keita |
 
 ## Current phase
 
@@ -84,8 +88,8 @@ When closing out a task, update the GitHub issue and backlog as part of the same
 ## Shipping flow
 
 1. **Branch off main** — one branch per issue, named after it (e.g. `fix/duplicate-language-prompt`)
-2. **Open a PR** when ready — title includes the issue number
-3. **Post in GitHub Discussions → Pull Requests** — tag `@dev-mthandabantu` so she sees it
+2. **Open a PR** when ready — title includes the issue number. Fill in the PR template (`.github/PULL_REQUEST_TEMPLATE.md`, auto-populated) properly — Plan/Prediction is written *before* you review your own diff, not after
+3. **Post in GitHub Discussions → Pull Requests** — tag `@dev-mthandabantu` so she sees it (skip this step if the PR already tags a specific reviewer directly — that tag sends its own notification)
 4. **Madrena reviews and approves** on GitHub — branch protection requires at least one approval before merge
 5. **Merge** once approved — squash merge, branch gets deleted
 6. **Staging auto-deploys** — GitHub Actions deploys to staging on every push to main (no manual step needed)
