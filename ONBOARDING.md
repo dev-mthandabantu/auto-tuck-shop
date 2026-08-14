@@ -60,18 +60,53 @@ R2_PUBLIC_URL=
 SENTRY_DSN=  # optional
 ```
 
-**4. Configure WhatsApp Business Profile**
+**4. Configure WhatsApp Business Profile (display name & icon)**
 
-Before first deployment, set up your WhatsApp Business Account profile on Meta's dashboard so customers see your business name and logo instead of just a phone number:
+Before first deployment, set up your WhatsApp Business Account profile on Meta's dashboard so customers see your business name and logo instead of a raw phone number. Below are exact breadcrumb-style navigation paths you can follow depending on which Meta UI you use.
 
-1. Go to [business.facebook.com](https://business.facebook.com)
-2. Select your WhatsApp Business Account
-3. Navigate to **Phone Numbers** → your phone number → **Profile**
-4. Set **Display Name** (e.g., "Auto Tuck Shop") — this requires Meta approval (24-48 hours)
-5. Upload a **Profile Picture** (your business logo, PNG/JPEG, recommended 512×512 px)
-6. Save and wait for approval if prompted
+Navigation (breadcrumb strings):
+- Business Settings → Accounts → WhatsApp Accounts → <your WhatsApp account / phone number> → Business profile → Edit
+- Meta Business Suite → More Tools → WhatsApp Manager → Phone numbers / Business assets → Select phone number → Business profile → Edit
+- Meta for Developers → My Apps → WhatsApp → WhatsApp Manager → Phone numbers → Select phone number → Business profile → Edit
 
-Once approved, customers will see your business name in the chat header instead of just the phone number.
+Step-by-step:
+1. Open https://business.facebook.com and sign in to the Business Manager that owns the WhatsApp number.
+2. Use one of the breadcrumb paths above to reach the **Business profile** for the phone number you will use for the bot.
+3. Click **Edit** (or **Profile**) and set the **Display name** (example: Auto Tuck Shop).
+4. Upload a **Profile photo** (PNG or JPEG). Recommended: square image (512×512 or 640×640 px). Keep file size modest (under ~5 MB) to avoid upload issues.
+5. Save changes.
+
+Review and timing:
+- Meta may review/approve display name changes for WhatsApp Business API numbers. Simple edits sometimes apply immediately but can still be subject to automated or manual review. Review times vary (hours → a few days).
+- If a display name is rejected you will see a notification in Business Manager / Support Inbox with a reason (commonly policy violation, trademark/impersonation, or use of disallowed words like "WhatsApp").
+
+Permissions & notes:
+- You must have a Business Manager role with rights to manage the WhatsApp asset (Business Manager admin or asset manager).
+- The phone number must be claimed/assigned to the business in WhatsApp Manager. Unassigned numbers cannot update profile settings from Business Manager.
+- This flow applies to Business API / WhatsApp Manager numbers. Editing the profile in the mobile WhatsApp Business app is separate and does not change the API-managed profile.
+
+References:
+- Manage business profile: https://developers.facebook.com/docs/whatsapp/manage-business-profile
+- Display name guide: https://developers.facebook.com/docs/whatsapp/cloud-api/guides/display-names
+- Profile photo: https://developers.facebook.com/docs/whatsapp/manage-business-profile/profile-photo
+
+After saving, validate by sending a test message to the number and confirming the display name and profile photo appear (allow propagation time). If edits are pending or rejected, check Business Manager notifications and complete Business Verification if requested.
+
+## WhatsApp UX behavior (typing + read receipts)
+
+Typing indicators are controlled by `ENABLE_WHATSAPP_TYPING` (default: `True`).
+Read receipts are controlled by `ENABLE_WHATSAPP_MARK_AS_READ` (default: `True`).
+
+The typing indicator call is sent using the inbound `message_id` payload expected by
+Meta's Cloud API typing/read flow. There is no explicit API `typing_off` call; the
+indicator naturally clears when processing completes and the bot replies.
+
+To validate on staging:
+
+1. Keep both flags enabled.
+2. Send a normal sale message from a real WhatsApp device.
+3. Confirm you see a short typing indicator before the bot reply.
+4. Confirm `/test/outbox/?phone=<number>` timeline includes `typing` and `mark_as_read` entries.
 
 **5. Migrate and create superuser**
 
