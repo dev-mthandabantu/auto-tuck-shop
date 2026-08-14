@@ -85,7 +85,7 @@ Releases follow semver patch bumps (v0.1.0 -> v0.1.1). Only Brighton publishes r
 | `ADMIN_PHONE_NUMBER` | Yes | WhatsApp number for admin notifications |
 | `SENTRY_DSN` | No | Error tracking |
 | `USE_MOCK_WHATSAPP` | Staging only | Must be `False` or unset on production |
-| `GEMINI_API_KEY` | No | Direct Gemini fallback (not currently used) |
+| `GEMINI_API_KEY` | No | Direct Gemini fallback if OpenRouter returns 402 (out of credits) — live, see `services/openrouter/client.py`. Optional but should be set on both staging and prod |
 
 ## Migrations
 

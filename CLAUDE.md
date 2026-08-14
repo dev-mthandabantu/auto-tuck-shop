@@ -4,18 +4,23 @@
 
 This file is the source of truth for any AI assistant working on this repo. **Keep it up to date as the project evolves** — when the phase changes, when new conventions are established, or when the team changes. At the end of any session where meaningful progress was made, update the relevant sections here. Don't let it drift.
 
+**If a change affects anything `docs/` describes, updating the relevant doc is part of the task, not a follow-up.** Same PR — see "Docs index" below for what's covered. This applies regardless of how small the change looks; a one-line fix can still contradict a documented invariant, and self-assessing size as a reason to skip the check is exactly how this file drifted before (wrong model name, dead GitHub handle, backwards Sentry-default claim — none of these were caught because nothing forced a check against the actual code).
+
 ## Start of every session
 
-Before doing anything else, ask the user these two questions:
+Before doing anything else:
 
 1. **Who is working?** — Brighton or Madrena (this changes how you respond: Brighton gets concise technical responses; Madrena gets more explanation and junior-friendly framing, especially around PR workflow and Git)
 2. **What are we working on?** — ask for the GitHub issue number if there is one, or a short description if it's exploratory. Then read that issue before starting.
+3. **Check the relevant `docs/` page(s) before proposing or writing any change — every session, no exceptions.** See "Where to find context" below for which page maps to which area. This applies regardless of how small the task looks — don't skip it because the change seems obviously small; that judgment call is exactly what's easy to get wrong.
 
-If the user's first message already makes it obvious (e.g. "fix issue #18"), skip the question it answers and only ask what's still unclear.
+If the user's first message already makes questions 1–2 obvious (e.g. "fix issue #18"), skip the question it answers and only ask what's still unclear. Question 3 is never skipped.
 
 ---
 
-Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voice messages to record sales. The bot parses them with an LLM (Gemini 2.5 Flash via OpenRouter), creates sale records, and replies with a confirmation. Voice messages are transcribed by ElevenLabs first.
+Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voice messages to record sales. The bot parses them with an LLM (`google/gemini-2.5-flash-lite` via OpenRouter, set by `OPENROUTER_MODEL`), creates sale records, and replies with a confirmation. Voice messages are transcribed by ElevenLabs first.
+
+**Gemini direct fallback:** if OpenRouter returns 402 (out of credits), `services/openrouter/client.py` transparently retries the same request against Gemini's own API directly using `GEMINI_API_KEY`, bypassing OpenRouter entirely for that call. OpenRouter is still the primary path when credits are available. This key is optional but should be set on both staging and prod — see `.env.example`.
 
 ## Team
 
@@ -45,11 +50,8 @@ gh issue edit <number> --add-project "Auto Tuck Shop — Backlog"
 
 ## Where to find context
 
-Before starting any task, read the relevant context:
+Non-doc references — code and commands, not covered by the docs index below:
 
-- **Architecture, data model, flows, async model:** `docs/Architecture.md`
-- **Pilot launch sequence and success metrics:** `docs/Pilot-Launch.md`
-- **All external service integrations:** `docs/Integrations.md`
 - **Key service entry points:** `apps/whatsapp/services/` — webhook_handler (main entry), sale_handler, waitlist_handler, business_reports, nudge_service, media_handler, message_parser, report_card, whatsapp_client
 - **LLM system prompt (tune for parsing improvements):** `services/openrouter/prompts.py`
 - **User-facing strings (EN + Shona):** `apps/whatsapp/locales/en.json`, `sn.json`
@@ -60,7 +62,7 @@ Before starting any task, read the relevant context:
 
 ## Docs index
 
-Documentation lives in `docs/` in this repo. Read the relevant file before starting any task. Update docs in the same PR as any behaviour change.
+Documentation lives in `docs/` in this repo. Read the relevant file before starting any task — this is the "Start of every session" step 3 above. Update docs in the same PR as any behaviour change, not as a follow-up.
 
 | File | Content |
 |------|---------|
@@ -131,7 +133,7 @@ The `deploy-production.yml` workflow triggers on `release: published` — no man
 
 ## Sentry
 
-- `SENTRY_ENVIRONMENT=production` must be set as a Fly secret on prod — without it events are tagged `development` and environment filters break
+- `SENTRY_ENVIRONMENT` defaults to `production` in `config/settings/base.py` — this means **staging** is the one that must set it explicitly (`SENTRY_ENVIRONMENT=staging` as a Fly secret on the staging app). If it's missing on staging, staging events get silently tagged `production` and pollute prod error filters
 - `SENTRY_AUTH_TOKEN` is a GitHub Actions secret (deploy workflow only) — creates a release on every prod deploy so issues auto-resolve and show which version introduced them
 - Cron monitors: `send-daily-reports` and `send-nudges` at `aakitech.sentry.io/crons/`
 
