@@ -33,12 +33,13 @@ class ParsedSaleItem(TypedDict, total=False):
     quantity: int
     unit_price: Decimal | None
     currency: str | None  # per-item currency; overrides top-level currency when set
-    price_ambiguous: bool  # True if a price was stated but total-vs-unit was unclear
+    price_ambiguous: bool | None
 
 
 class SaleCreationResult(TypedDict):
-    sale: Sale
+    sale: Sale | None
     unmatched_items: list[str]
+    ambiguous_items: list[str]
 
 
 def find_product_by_name(name: str, company: Company) -> Product | None:
@@ -66,7 +67,8 @@ def create_sale_from_parsed_items(
 
     Returns the created sale and a list of unmatched product names.
     """
-    # Validate prices before touching the database
+    # Validate prices before touching the database (ignore ambiguous items
+    # which have had their unit_price cleared by the parser)
     for item in items:
         price = item.get("unit_price")
         if price is not None and abs(Decimal(str(price))) > MAX_UNIT_PRICE:
@@ -80,29 +82,13 @@ def create_sale_from_parsed_items(
                 f"Maximum allowed is {MAX_UNIT_PRICE}."
             )
 
-    sale = Sale.objects.create(
-        whatsapp_message_id=whatsapp_message_id,
-        company=company,
-    )
+    sale: Sale | None = None
     unmatched_items: list[str] = []
+    ambiguous_items: list[str] = []
     detected_currency = currency or "USD"
 
     for item in items:
         product = find_product_by_name(item["product_name"], company=company)
-
-        if not product:
-            # Create new product if not found
-            product = Product.objects.create(
-                name=item["product_name"],
-                company=company,
-            )
-            # If a price is provided, set it as the initial price with currency
-            if item.get("unit_price") is not None:
-                ProductPrice.objects.create(
-                    product=product,
-                    price=item["unit_price"],
-                    currency=item.get("currency") or detected_currency,
-                )
 
         # Determine price and currency
         unit_price = item.get("unit_price")
@@ -111,24 +97,46 @@ def create_sale_from_parsed_items(
         if unit_price is not None:
             # Use per-item currency if the LLM provided one, else fall back to sale-level
             item_currency = item.get("currency") or detected_currency
-
-            # Update stored price if different from current price
-            current_price = product.current_price
-            if current_price is None or unit_price != current_price:
-                ProductPrice.objects.create(
-                    product=product,
-                    price=unit_price,
-                    currency=item_currency,
-                )
-        elif not item.get("price_ambiguous"):
+        elif product and not item.get("price_ambiguous"):
             # No price was mentioned at all — fall back to the stored price.
             price_with_currency = product.current_price_with_currency
             if price_with_currency:
                 unit_price, item_currency = price_with_currency
 
         if unit_price is None:
-            raise MissingPriceError(
-                f"No price for '{item['product_name']}'. Please resend with a price."
+            # If this item was flagged as ambiguous by the parser (e.g. "3 chips $1"
+            # where it's unclear whether $1 is total or per-item), record it as
+            # an ambiguous item and skip creating a SaleItem for now. Similarly,
+            # if no stored price exists, mark as unmatched. We do not raise an
+            # exception here to avoid rolling back the entire sale; valid lines
+            # will be saved and the caller will inform the user which lines need
+            # clarification or prices.
+            if item.get("price_ambiguous"):
+                ambiguous_items.append(item["product_name"])
+                continue
+            else:
+                unmatched_items.append(item["product_name"])
+                continue
+
+        if not product:
+            product = Product.objects.create(
+                name=item["product_name"],
+                company=company,
+            )
+
+        if sale is None:
+            sale = Sale.objects.create(
+                whatsapp_message_id=whatsapp_message_id,
+                company=company,
+            )
+
+        # Update stored price if different from current price
+        current_price = product.current_price
+        if current_price is None or unit_price != current_price:
+            ProductPrice.objects.create(
+                product=product,
+                price=unit_price,
+                currency=item_currency,
             )
 
         SaleItem.objects.create(
@@ -139,8 +147,12 @@ def create_sale_from_parsed_items(
             currency=item_currency,
         )
 
-    # Recalculate total
-    sale.total_amount = sale.calculate_total()
-    sale.save()
+    if sale is not None:
+        sale.total_amount = sale.calculate_total()
+        sale.save()
 
-    return {"sale": sale, "unmatched_items": unmatched_items}
+    return {
+        "sale": sale,
+        "unmatched_items": unmatched_items,
+        "ambiguous_items": ambiguous_items,
+    }

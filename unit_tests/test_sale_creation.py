@@ -6,7 +6,8 @@ from django.test import TestCase
 
 from apps.catalog.models import Product, ProductPrice
 from apps.core.models import Company
-from apps.sales.services import MissingPriceError, create_sale_from_parsed_items
+from apps.sales.models import Sale
+from apps.sales.services import create_sale_from_parsed_items
 from apps.whatsapp.services.message_parser import _apply_rule_based_price_hints
 
 
@@ -35,22 +36,24 @@ class CreateSaleFromParsedItemsTest(TestCase):
     def test_ambiguous_price_does_not_fall_back_to_stored_price(self):
         """Regression for #220: a price WAS stated but was ambiguous (total vs
         per-unit, e.g. '4 games $1 sale') — must not silently substitute the
-        stored/catalog price. Should raise MissingPriceError so the owner is
-        asked to clarify instead."""
+        stored/catalog price. The owner should be asked to clarify instead."""
         product = Product.objects.create(name="Games", company=self.company)
         ProductPrice.objects.create(product=product, price=Decimal("5.00"), currency="ZAR")
 
-        with self.assertRaises(MissingPriceError):
-            create_sale_from_parsed_items(
-                items=[{
-                    "product_name": "Games",
-                    "quantity": 4,
-                    "unit_price": None,
-                    "currency": None,
-                    "price_ambiguous": True,
-                }],
-                company=self.company,
-            )
+        result = create_sale_from_parsed_items(
+            items=[{
+                "product_name": "Games",
+                "quantity": 4,
+                "unit_price": None,
+                "currency": None,
+                "price_ambiguous": True,
+            }],
+            company=self.company,
+        )
+
+        self.assertIsNone(result["sale"])
+        self.assertEqual(result["ambiguous_items"], ["Games"])
+        self.assertEqual(Sale.objects.count(), 0)
 
     def test_stated_price_overrides_stored_price(self):
         """A clearly-parsed stated price always overrides the stored catalog price."""
@@ -64,6 +67,66 @@ class CreateSaleFromParsedItemsTest(TestCase):
         item = result["sale"].items.get()
         self.assertEqual(item.unit_price, Decimal("0.25"))
         self.assertEqual(item.currency, "USD")
+
+    def test_partial_sale_preserves_valid_items_without_catalog_pollution(self):
+        result = create_sale_from_parsed_items(
+            items=[
+                {
+                    "product_name": "Bread",
+                    "quantity": 2,
+                    "unit_price": Decimal("0.50"),
+                    "currency": "USD",
+                },
+                {
+                    "product_name": "Chisp",
+                    "quantity": 3,
+                    "unit_price": None,
+                    "currency": None,
+                    "price_ambiguous": True,
+                },
+                {
+                    "product_name": "Unknown",
+                    "quantity": 1,
+                    "unit_price": None,
+                    "currency": None,
+                },
+            ],
+            company=self.company,
+        )
+
+        self.assertIsNotNone(result["sale"])
+        self.assertEqual(result["ambiguous_items"], ["Chisp"])
+        self.assertEqual(result["unmatched_items"], ["Unknown"])
+        self.assertEqual(result["sale"].items.count(), 1)
+        self.assertTrue(Product.objects.filter(name="Bread", company=self.company).exists())
+        self.assertFalse(Product.objects.filter(name="Chisp", company=self.company).exists())
+        self.assertFalse(Product.objects.filter(name="Unknown", company=self.company).exists())
+
+    def test_all_skipped_items_do_not_create_confirmed_empty_sale_or_products(self):
+        result = create_sale_from_parsed_items(
+            items=[
+                {
+                    "product_name": "Chisp",
+                    "quantity": 3,
+                    "unit_price": None,
+                    "currency": None,
+                    "price_ambiguous": True,
+                },
+                {
+                    "product_name": "Unknown",
+                    "quantity": 1,
+                    "unit_price": None,
+                    "currency": None,
+                },
+            ],
+            company=self.company,
+        )
+
+        self.assertIsNone(result["sale"])
+        self.assertEqual(result["ambiguous_items"], ["Chisp"])
+        self.assertEqual(result["unmatched_items"], ["Unknown"])
+        self.assertEqual(Sale.objects.count(), 0)
+        self.assertEqual(Product.objects.count(), 0)
 
 
 class PriceHintsTest(TestCase):

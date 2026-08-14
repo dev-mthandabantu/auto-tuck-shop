@@ -96,6 +96,8 @@
         "subtotal": "\n{currency} total: {total}",
         "missing_price_reject": "I could not record this sale — one or more items have no price. Please resend with prices for everything, e.g. \"2 bread $0.50 each, 3 coke R15 each\".",
         "unmatched": "\n⚠ Unmatched: {items}",
+        "price_ambiguous_notice": "Some items were ambiguous (total vs per-item): {items}. I recorded the other items. Please resend or clarify these lines, e.g. '3 chips $1 each' or '3 chips $1 total'.",
+        "price_ambiguous_only_notice": "These items were ambiguous (total vs per-item): {items}. Please resend or clarify them, e.g. '3 chips $1 each' or '3 chips $1 total'.",
         "bot_mistake": "Sale thrown away. Send your items again to redo.",
         "confirmed_ok": "✓ Great, sale recorded!",
         "cancelled": "✗ This sale has been thrown out. Send everything again to redo it.",

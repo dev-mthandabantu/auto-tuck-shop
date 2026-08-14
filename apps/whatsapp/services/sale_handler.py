@@ -11,7 +11,7 @@ from django.db import close_old_connections, models
 from apps.core.currencies import format_price
 from apps.core.models import Company
 from apps.sales.models import Sale
-from apps.sales.services import create_sale_from_parsed_items, MissingPriceError, PriceOverflowError
+from apps.sales.services import create_sale_from_parsed_items, PriceOverflowError
 from apps.whatsapp.services.webhook_handler import (
     db_sync_to_async,
     DEFAULT_LANGUAGE,
@@ -149,22 +149,22 @@ async def process_sale_message_unified(
         await _update_company_currency(company.id, result.currency)
         company.currency = result.currency
 
+    # Create the sale; create_sale_from_parsed_items now returns ambiguous and
+    # unmatched items rather than raising MissingPriceError so we can salvage
+    # valid lines and ask the user to clarify only the problematic ones.
     try:
         sale_result = await _create_sale(result.items, message_id, company, currency=result.currency)
     except PriceOverflowError:
         logger.warning("Price overflow for message %s from %s", message_id, sender)
         await _send_response(sender, t("sale.price_too_large", lang=lang), reply_to=message_id)
         return
-    except MissingPriceError as e:
-        logger.info("Missing price for message %s from %s: %s", message_id, sender, e)
-        await _send_response(sender, t("sale.missing_price_reject", lang=lang), reply_to=message_id)
-        return
 
     sale = sale_result["sale"]
-    unmatched = sale_result["unmatched_items"]
+    unmatched = sale_result.get("unmatched_items", [])
+    ambiguous = sale_result.get("ambiguous_items", [])
 
     response_lines = []
-    sale_items = await _get_sale_items(sale)
+    sale_items = await _get_sale_items(sale) if sale else []
     currency_totals: dict[str, Decimal] = {}
 
     for item in sale_items:
@@ -185,18 +185,32 @@ async def process_sale_message_unified(
         for currency, total in currency_totals.items():
             response_lines.append(t("sale.subtotal", lang=lang, currency=currency, total=format_price(total, currency)))
 
+    has_sale_items = bool(sale_items)
     if unmatched:
         response_lines.append(t("sale.unmatched", lang=lang, items=", ".join(unmatched)))
 
-    buttons = [
-        {"id": f"confirm_{sale.id}", "title": t("sale.btn_confirm", lang=lang)},
-        {"id": f"fix_{sale.id}", "title": t("sale.btn_fix", lang=lang)},
-    ]
-    message_sid = await _send_response_with_buttons(
-        sender, "\n".join(response_lines), buttons, reply_to=message_id
-    )
-    if message_sid:
-        await _store_response_message_sid(sale.id, message_sid)
+    if ambiguous:
+        if has_sale_items:
+            response_lines.append(t(
+                "sale.price_ambiguous_notice", lang=lang, items=", ".join(ambiguous)
+            ))
+        else:
+            response_lines.append(t(
+                "sale.price_ambiguous_only_notice", lang=lang, items=", ".join(ambiguous)
+            ))
+
+    if has_sale_items:
+        buttons = [
+            {"id": f"confirm_{sale.id}", "title": t("sale.btn_confirm", lang=lang)},
+            {"id": f"fix_{sale.id}", "title": t("sale.btn_fix", lang=lang)},
+        ]
+        message_sid = await _send_response_with_buttons(
+            sender, "\n".join(response_lines), buttons, reply_to=message_id
+        )
+        if message_sid:
+            await _store_response_message_sid(sale.id, message_sid)
+    else:
+        await _send_response(sender, "\n".join(response_lines), reply_to=message_id)
 
     # If all priced items have no currency, ask the owner to clarify
     priced_items = [i for i in sale_items if i.unit_price is not None]

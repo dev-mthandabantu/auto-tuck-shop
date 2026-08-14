@@ -96,6 +96,8 @@
         "subtotal": "\n{currency} zvese pamwe: {total}",
         "missing_price_reject": "Handina kukwanisa kurekodha — zvimwe zvinhu hazvina mutengo. Tumira patsva nemitengo yezvinhu zvese, semuenzaniso \"2 bread $1 each, 3 coke R15 each\".",
         "unmatched": "\n⚠ Hazvisi kuenderana: {items}",
+        "price_ambiguous_notice": "Zvimwe zvinhu hazvina kujeka (mutengo wakazara vs mutengo pa unit): {items}. Ndakanyoresa zvimwe zvinhu zvakanaka. Ndapota tumira kana kutsanangura mutsara uyu, semuenzaniso '3 chips $1 imwe' kana '3 chips $1 zvese'.",
+        "price_ambiguous_only_notice": "Zvinhu izvi hazvina kujeka (mutengo wakazara vs mutengo pa unit): {items}. Ndapota tumira patsva kana kutsanangura, semuenzaniso '3 chips $1 imwe' kana '3 chips $1 zvese'.",
         "bot_mistake": "Tarasa sale ranga ranyorwa. Sendai patsva.",
         "confirmed_ok": "✓ Zvaitwa, sale yarecordwa!",
         "cancelled": "✗ Tarasa sale ranga ranyorwa. Sendai patsva.",
