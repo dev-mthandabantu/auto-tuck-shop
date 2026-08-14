@@ -110,7 +110,7 @@ def _extract_phone_number(sender: str) -> str:
 @db_sync_to_async
 def _get_profile_by_phone(phone_number: str) -> UserProfile | None:
     try:
-        return UserProfile.objects.get(phone_number=phone_number)
+        return UserProfile.objects.select_related("user").get(phone_number=phone_number)
     except UserProfile.DoesNotExist:
         return None
 
@@ -520,6 +520,11 @@ async def _process_message_async(
         if result.intent == "add_assistant":
             from apps.whatsapp.services.waitlist_handler import handle_add_assistant
             await handle_add_assistant(sender, text, user_profile, result)
+            return
+
+        if result.intent == "remove_assistant":
+            from apps.whatsapp.services.waitlist_handler import handle_remove_assistant
+            await handle_remove_assistant(sender, text, user_profile, result)
             return
 
         if result.intent == "sales_query":

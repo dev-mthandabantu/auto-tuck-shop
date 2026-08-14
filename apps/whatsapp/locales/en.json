@@ -36,7 +36,11 @@
         "missing_phone": "I could not find a phone number. Please resend the full message, e.g., 'add assistant +2637812345678'",
         "already_registered": "The phone number {phone} is already registered to another user.",
         "added": "Assistant added successfully!\n\nPhone: {phone}\nThey can now send sales messages for {company}.",
-        "welcome": "You have been added as an assistant for {company}.\n\nYou can now send sales messages to this number, just like the owner. For example:\n\n'2 Mazoe $3 each'\n'5 bread R18 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG."
+        "welcome": "You have been added as an assistant for {company}.\n\nYou can now send sales messages to this number, just like the owner. For example:\n\n'2 Mazoe $3 each'\n'5 bread R18 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.",
+        "not_found": "I could not find an assistant with the phone number {phone} for your shop.",
+        "cannot_remove_owner": "Sorry, I can only remove assistants, not shop owners.",
+        "removed": "Assistant removed.\n\nPhone: {phone}\nThey can no longer send sales messages for {company}.",
+        "removed_notice": "You no longer have access to record sales for this shop. Contact the shop owner if this is a mistake."
     },
     "closing": {
         "setup_prompt": "One last thing — what time does your shop usually close? I will use this to send your daily summary automatically.",

@@ -100,6 +100,22 @@ def _approve_waitlist_entry(entry: WaitlistEntry) -> tuple[Company, UserProfile]
 
 @db_sync_to_async
 def _create_assistant(phone_number: str, company) -> UserProfile:
+    # phone_number is unique. A previously-removed assistant's row still
+    # occupies it (deactivated, not deleted) — reactivate and re-home that
+    # row instead of inserting a new one, which would hit the unique
+    # constraint. handle_add_assistant already confirmed no *active* profile
+    # exists for this number before calling here.
+    try:
+        existing = UserProfile.objects.select_related("user").get(phone_number=phone_number)
+        existing.user.is_active = True
+        existing.user.save(update_fields=["is_active"])
+        existing.company = company
+        existing.role = UserProfile.Role.ASSISTANT
+        existing.save(update_fields=["company", "role"])
+        return existing
+    except UserProfile.DoesNotExist:
+        pass
+
     username = "".join(c for c in phone_number if c.isalnum())
     base_username = username
     counter = 1
@@ -113,6 +129,11 @@ def _create_assistant(phone_number: str, company) -> UserProfile:
         role=UserProfile.Role.ASSISTANT,
         phone_number=phone_number,
     )
+
+
+@db_sync_to_async
+def _deactivate_assistant(user_profile_id: int) -> None:
+    User.objects.filter(profile__id=user_profile_id).update(is_active=False)
 
 
 async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
@@ -243,7 +264,7 @@ async def handle_add_assistant(sender: str, text: str, user_profile, result) -> 
         await _send_response(sender, t("assistant.missing_phone", lang=lang))
         return
     existing = await _get_profile_by_phone(phone_number)
-    if existing:
+    if existing and existing.user.is_active:
         await _send_response(sender, t("assistant.already_registered", lang=lang, phone=phone_number))
         return
     await _create_assistant(phone_number, user_profile.company)
@@ -261,6 +282,27 @@ async def handle_add_assistant(sender: str, text: str, user_profile, result) -> 
             logger.exception("Failed to send assistant welcome template")
 
     await _send_response(phone_number, t("assistant.welcome", lang=lang, company=user_profile.company.name))
+
+
+async def handle_remove_assistant(sender: str, text: str, user_profile, result) -> None:
+    lang = user_profile.language if user_profile else DEFAULT_LANGUAGE
+    if not user_profile or user_profile.role != UserProfile.Role.OWNER:
+        await _send_response(sender, t("assistant.not_owner", lang=lang))
+        return
+    phone_number = result.phone_number
+    if not phone_number:
+        await _send_response(sender, t("assistant.missing_phone", lang=lang))
+        return
+    target = await _get_profile_by_phone(phone_number)
+    if not target or target.company_id != user_profile.company_id or not target.user.is_active:
+        await _send_response(sender, t("assistant.not_found", lang=lang, phone=phone_number))
+        return
+    if target.role != UserProfile.Role.ASSISTANT:
+        await _send_response(sender, t("assistant.cannot_remove_owner", lang=lang))
+        return
+    await _deactivate_assistant(target.pk)
+    await _send_response(sender, t("assistant.removed", lang=lang, phone=phone_number, company=user_profile.company.name))
+    await _send_response(phone_number, t("assistant.removed_notice", lang=target.language or DEFAULT_LANGUAGE))
 
 
 def handle_new_waitlist_entry(sender: str, text: str) -> None:

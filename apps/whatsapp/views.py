@@ -63,12 +63,19 @@ def _lookup_sender(sender: str) -> tuple[SenderStatus, UserProfile | None, Waitl
         - KNOWN_USER: has profile, None waitlist entry
         - WAITLISTED: None profile, has waitlist entry
         - UNKNOWN: None profile, None waitlist entry
+
+    A deactivated profile (e.g. a removed assistant) is treated as UNKNOWN —
+    they can freely re-onboard as a new assistant or shop owner. Only their
+    past sales history is preserved; the profile itself no longer counts as
+    "known" for lookup/registration purposes.
     """
     phone_number = _extract_phone_number(sender)
 
     # Check for existing UserProfile first
     try:
-        profile = UserProfile.objects.select_related("company").get(phone_number=phone_number)
+        profile = UserProfile.objects.select_related("company").get(
+            phone_number=phone_number, user__is_active=True
+        )
         return (SenderStatus.KNOWN_USER, profile, None)
     except UserProfile.DoesNotExist:
         pass

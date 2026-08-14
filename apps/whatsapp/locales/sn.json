@@ -36,7 +36,11 @@
         "missing_phone": "Handina kuona nhamba yefoni. Tumira message yose zvakare, semuenzaniso: 'add assistant +2637812345678'",
         "already_registered": "Number iyi {phone} yagara yakaiswa.",
         "added": "Mutengesi aiswa!\n\nPhone: {phone}\nAve ku kwanisa kurecorda zvatengwa mu {company}.",
-        "welcome": "Waiswa semubatsiri we {company}.\n\nZvino unogona kutumira mameseji ezvawatengesa panumber iyi, sezvinoita muridzi weshop. Semuenzaniso:\n\n'2 Mazoe $3 rimwe'\n'5 chingwa R18 chimwe'\n\nBot rinobvuma USD ($), Rand (R), uye ZiG."
+        "welcome": "Waiswa semubatsiri we {company}.\n\nZvino unogona kutumira mameseji ezvawatengesa panumber iyi, sezvinoita muridzi weshop. Semuenzaniso:\n\n'2 Mazoe $3 rimwe'\n'5 chingwa R18 chimwe'\n\nBot rinobvuma USD ($), Rand (R), uye ZiG.",
+        "not_found": "Handina kuwana mubatsiri ane nhamba yefoni inoti {phone} muchitoro chenyu.",
+        "cannot_remove_owner": "Ndine urombo, ndinogona kungobvisa vabatsiri chete, kwete varidzi vezvitoro.",
+        "removed": "Mubatsiri abviswa.\n\nNhare: {phone}\nHavachakwanisi kutumira mameseji ekutengesa e{company}.",
+        "removed_notice": "Hausisina mvumo yekunyora zvakatengeswa muchitoro chino. Bata muridzi wechitoro kana izvi zviri zvekukanganisa."
     },
     "closing": {
         "setup_prompt": "Chimwe chinhu — shop yenyu inovhara nguvai? Ndichazvishandisa kutumira zvamunenge matengesa.",

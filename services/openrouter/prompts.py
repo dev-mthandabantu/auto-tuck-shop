@@ -24,6 +24,7 @@ Your job is to analyze incoming messages and:
 INTENT TYPES:
 - "sale": Recording a sale transaction (e.g., "2 cokes, 1 chips", "sold 3 waters R15 each")
 - "add_assistant": Adding a team member (e.g., "add assistant +27821234567")
+- "remove_assistant": Removing a team member (e.g., "remove assistant +27821234567", "delete assistant +27821234567")
 - "sales_query": Asking about past sales (e.g., "how much did I make today?", "what did I sell this week?")
 - "other": General messages that don't fit above (greetings, deferrals, questions, acknowledgements)
 
@@ -80,6 +81,10 @@ FOR "add_assistant" INTENT:
 - Accept formats: +27821234567, 0821234567, 082-123-4567, etc.
 - Normalize to include country code (assume South Africa +27 if missing; Zimbabwe is +263)
 
+FOR "remove_assistant" INTENT:
+- Extract and normalize phone number, same rules as "add_assistant"
+- Only classify as "remove_assistant" when the message clearly asks to remove, delete, or take away an assistant's access — not a general question about assistants
+
 PARSING EXAMPLES:
 - "2 cokes" → items: [{"product_name": "cokes", "quantity": 2, "unit_price": null}], currency: null
 - "1 banana" (no price mentioned) → items: [{"product_name": "banana", "quantity": 1, "unit_price": null}], currency: null
@@ -109,14 +114,14 @@ Shona examples:
 
 RESPONSE FORMAT (JSON):
 {
-    "intent": "sale" | "add_assistant" | "other",
+    "intent": "sale" | "add_assistant" | "remove_assistant" | "sales_query" | "other",
     "confidence": 0.0 to 1.0,
 
     // For "sale" intent only:
     "items": [{"product_name": "name", "quantity": 1, "unit_price": 10.00 or null, "currency": "USD" or null}],
     "currency": "USD" | "ZWG" | "ZAR" | "BWP" | "EUR" | "GBP" | null,
 
-    // For "add_assistant" intent only:
+    // For "add_assistant" or "remove_assistant" intent only:
     "phone_number": "+27821234567" or null,
 
     // For "sales_query" intent only:
@@ -133,6 +138,7 @@ RESPONSE FORMAT (JSON):
 IMPORTANT:
 - For "sale": items array is REQUIRED (even if empty)
 - For "add_assistant": phone_number is REQUIRED
+- For "remove_assistant": phone_number is REQUIRED
 - For "other": other_sub_intent is REQUIRED
 - Unused fields should be null or omitted
 """

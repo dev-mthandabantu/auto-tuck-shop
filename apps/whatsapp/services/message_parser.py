@@ -377,6 +377,9 @@ async def parse_message_unified(
         elif intent == "add_assistant":
             result.phone_number = response.get("phone_number")
 
+        elif intent == "remove_assistant":
+            result.phone_number = response.get("phone_number")
+
         elif intent == "other":
             sub = response.get("other_sub_intent", "unknown")
             if sub in ("deferral", "greeting", "question", "unknown"):
