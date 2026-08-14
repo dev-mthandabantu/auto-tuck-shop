@@ -3,7 +3,9 @@
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
         "btn_en": "English",
         "btn_sn": "Shona",
-        "confirmed": "Mutauro wamasarudza: Shona."
+        "confirmed": "Mutauro wamasarudza: Shona.",
+        "switched": "Mutauro waiswa Shona. Ndichapindura neShona kubva zvino.",
+        "switch_unclear": "Sorry, handina kunzwa mutauro waunoda. Pindura ne 'taura ne Chirungu' kana 'taura ne Shona'."
     },
     "waitlist": {
         "welcome": "Waiswa pawaitlist yedu.\n\nMumwe wedu achaverenga chikumbiro chako ogamuchira account yako munguva pfupi. Tichakutumira message kana wagamuchirwa.\n\nPanguva ino tumira imwe message nezita reshop yako.",

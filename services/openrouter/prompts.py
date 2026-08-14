@@ -26,13 +26,24 @@ INTENT TYPES:
 - "add_assistant": Adding a team member (e.g., "add assistant +27821234567")
 - "remove_assistant": Removing a team member (e.g., "remove assistant +27821234567", "delete assistant +27821234567")
 - "sales_query": Asking about past sales (e.g., "how much did I make today?", "what did I sell this week?")
+- "language_switch": Owner or assistant wants the bot to reply in a different language from now on (e.g., "switch to shona", "respond in english", "please use English", "can you speak Shona", "change my language to Shona")
 - "other": General messages that don't fit above (greetings, deferrals, questions, acknowledgements)
+
+FOR "language_switch" INTENT:
+- Extract the requested language as "target_language": "en" for English, "sn" for Shona
+- Only classify as "language_switch" when the message is clearly a request to change the reply language going forward — not a message that merely happens to be written in English or Shona
+- If the target language is unclear or not English/Shona, set "target_language" to null
+
+EMOJI GUIDANCE (applies before classifying intent):
+- Emoji that depict countable objects (fruit, food, books, tools, etc.), especially when repeated, may represent a sale attempt with no price stated (e.g., "🍎🍎🍎🍎" could mean 4 apples). Treat these as "sale" intent and extract them as items using their common product name, with unit_price left unset — do not guess a price.
+- Reactive/acknowledgement emoji with no product meaning (e.g., "👍", "🙏", "❤️", "✅") are not sale attempts — classify these under "other" / "greeting" as below.
 
 FOR "other" INTENT, also set "other_sub_intent":
 - "deferral": Owner is postponing or saying they'll do something later (e.g., "will start tomorrow", "not now", "will get back to you", "busy right now")
-- "greeting": Simple greeting or social acknowledgement with no action needed (e.g., "hi", "okay", "thanks", "good morning", "👍")
+- "greeting": Simple greeting or social acknowledgement with no action needed (e.g., "hi", "okay", "thanks", "good morning", "👍", "🙏", "❤️", "✅")
 - "question": Owner is asking a question the bot cannot answer (e.g., "how do I delete a sale?", "can you help me with X?")
 - "unknown": Anything else that is clearly not a sale but doesn't fit the above
+
 
 EXTRACTION RULES BY INTENT:
 
@@ -114,7 +125,7 @@ Shona examples:
 
 RESPONSE FORMAT (JSON):
 {
-    "intent": "sale" | "add_assistant" | "remove_assistant" | "sales_query" | "other",
+    "intent": "sale" | "add_assistant" | "remove_assistant" | "sales_query" | "language_switch" | "other",
     "confidence": 0.0 to 1.0,
 
     // For "sale" intent only:
@@ -128,6 +139,9 @@ RESPONSE FORMAT (JSON):
     "timeframe": "today" | "yesterday" | "week" | "month" | "year" | null,
     "product_filter": "product name" or null,
 
+    // For "language_switch" intent only:
+    "target_language": "en" | "sn" | null,
+
     // For "other" intent only:
     "other_sub_intent": "deferral" | "greeting" | "question" | "unknown",
 
@@ -139,6 +153,7 @@ IMPORTANT:
 - For "sale": items array is REQUIRED (even if empty)
 - For "add_assistant": phone_number is REQUIRED
 - For "remove_assistant": phone_number is REQUIRED
+- For "language_switch": target_language is REQUIRED
 - For "other": other_sub_intent is REQUIRED
 - Unused fields should be null or omitted
 """

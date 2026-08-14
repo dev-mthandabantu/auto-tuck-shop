@@ -151,7 +151,7 @@ class ParsedSaleMessage:
 @dataclass
 class UnifiedMessageResult:
     """Result of unified message parsing (intent + data extraction)."""
-    intent: str  # "sale" | "add_assistant" | "sales_query" | "other"
+    intent: str  # "sale" | "add_assistant" | "sales_query" | "language_switch" | "other"
     confidence: float
 
     # Sale-specific (populated if intent="sale")
@@ -164,6 +164,9 @@ class UnifiedMessageResult:
     # Sales query-specific (populated if intent="sales_query")
     timeframe: str | None = None  # "today", "yesterday", "week", "month", "X_days"
     product_filter: str | None = None
+
+    # Language switch-specific (populated if intent="language_switch")
+    target_language: str | None = None  # "en" | "sn"
 
     # Other-specific (populated if intent="other")
     other_sub_intent: str | None = None  # "deferral" | "greeting" | "question" | "unknown"
@@ -390,6 +393,10 @@ async def parse_message_unified(
         elif intent == "sales_query":
             result.timeframe = response.get("timeframe", "today")
             result.product_filter = response.get("product_filter")
+
+        elif intent == "language_switch":
+            target = response.get("target_language")
+            result.target_language = target if target in ("en", "sn") else None
 
         if message_id:
             try:

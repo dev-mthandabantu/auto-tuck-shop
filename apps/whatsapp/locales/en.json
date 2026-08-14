@@ -3,7 +3,9 @@
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
         "btn_en": "English",
         "btn_sn": "Shona",
-        "confirmed": "Language set to English."
+        "confirmed": "Language set to English.",
+        "switched": "Language set to English. I will reply in English from now on.",
+        "switch_unclear": "Sorry, I did not catch which language you want. Reply with 'switch to English' or 'switch to Shona'."
     },
     "waitlist": {
         "welcome": "You have been added to our waitlist.\n\nAn administrator will review your request and approve your account shortly. We will send you a message when you are approved.\n\nIn the meantime, please send another message with your shop name.",
