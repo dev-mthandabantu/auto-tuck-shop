@@ -11,10 +11,10 @@ This file is the source of truth for any AI assistant working on this repo. **Ke
 Before doing anything else:
 
 1. **Who is working?** — Brighton or Madrena (this changes how you respond: Brighton gets concise technical responses; Madrena gets more explanation and junior-friendly framing, especially around PR workflow and Git)
-2. **What are we working on?** — ask for the GitHub issue number if there is one, or a short description if it's exploratory. Then read that issue before starting.
+2. **What are we working on?** — ask for the GitHub issue number if there is one, or a short description if it's exploratory. Then read that issue before starting. **If it's a GitHub issue, also check for open PRs already referencing that issue number** (`gh pr list --search "<issue-number> in:body"` or check the issue's linked PRs) before writing any code — a reassigned or re-picked-up issue can already have work in flight elsewhere. #284 shipped two independent fixes (#286, #291) from two different people before anyone caught the overlap, because reassignment happened without checking for an existing PR.
 3. **Check the relevant `docs/` page(s) before proposing or writing any change — every session, no exceptions.** See "Where to find context" below for which page maps to which area. This applies regardless of how small the task looks — don't skip it because the change seems obviously small; that judgment call is exactly what's easy to get wrong.
 
-If the user's first message already makes questions 1–2 obvious (e.g. "fix issue #18"), skip the question it answers and only ask what's still unclear. Question 3 is never skipped.
+If the user's first message already makes questions 1–2 obvious (e.g. "fix issue #18"), skip the question it answers and only ask what's still unclear. Question 3 is never skipped, and the open-PR check in question 2 is never skipped either.
 
 ---
 
