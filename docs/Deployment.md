@@ -59,8 +59,8 @@ Releases follow semver patch bumps (v0.1.0 -> v0.1.1). Only Brighton publishes r
 
 1. Branch off `main` -- one branch per issue (`fix/issue-name`, `feat/feature-name`)
 2. Open a PR -- title includes the issue number
-3. Post in GitHub Discussions -> Pull Requests, tag `@dev-mthandabantu`
-4. Madrena reviews and approves (branch protection requires at least one approval)
+3. Post in GitHub Discussions -> Pull Requests, tag a reviewer
+4. Approving reviewers: Brighton, Omar, Kundai, or Munashe (branch protection requires at least one approval) -- see AGENTS.md
 5. Squash merge -> branch deleted -> staging auto-deploys
 
 ## Key Environment Variables

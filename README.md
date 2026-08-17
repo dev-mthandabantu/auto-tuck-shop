@@ -31,12 +31,11 @@ git push origin your-branch-name
 
 ## Deploying
 
-Always deploy to staging first, run tests, then production — per CLAUDE.md.
+Always deploy to staging first, run tests, then production — per AGENTS.md. **Production deploys only via a Brighton-published GitHub Release — never `fly deploy` directly to prod.**
 
 ```bash
 fly deploy -c fly.staging.toml
 python -m pytest tests/ -x
-fly deploy
 ```
 
 ## Testing on staging

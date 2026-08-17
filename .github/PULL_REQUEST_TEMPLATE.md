@@ -55,4 +55,4 @@ Fixes #
 - [ ] This PR requires a docs update — done in this PR
 - [ ] This PR requires a docs update — follow-up issue linked here: #
 
-<!-- See "Docs index" in CLAUDE.md. Update the relevant file in docs/ in the same PR as any behaviour change. -->
+<!-- See "Docs index" in AGENTS.md. Update the relevant file in docs/ in the same PR as any behaviour change. -->
