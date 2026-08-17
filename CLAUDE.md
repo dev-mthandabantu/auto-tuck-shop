@@ -84,6 +84,7 @@ When closing out a task, update the GitHub issue and backlog as part of the same
 - **Close issues** when the fix is merged: `gh issue close <number> --comment "Fixed in #<PR>"`
 - **Add new issues** for anything discovered mid-work that's out of scope for the current PR. Add them to the project immediately: `gh issue edit <number> --add-project "Auto Tuck Shop — Backlog"`
 - **Set a Status immediately** when adding any issue to the project board — GitHub does not auto-assign one. An issue with no Status shows up in a "No Status" column and clutters the board. Always set Todo, In Progress, or Done at the time of adding.
+- **Set a milestone immediately** on every new issue — GitHub does not auto-assign one either. Pick the milestone that matches the theme (see the milestone list on the repo's Issues page); if none genuinely fits, ask before leaving it blank rather than skipping it silently.
 - **Update priority labels** if the significance of an open issue changes (e.g. a "nice to have" becomes a production bug)
 - **Update CLAUDE.md phase status** when the open items above change
 
