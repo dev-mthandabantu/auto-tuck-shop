@@ -11,8 +11,17 @@ This is the source of truth for any AI assistant working on this repo. Update it
 1. **Who is working?** — Brighton or Madrena (see "Working with Madrena" below for what that means in practice)
 2. **What are we working on?** — get the issue number, or a short description if it's exploratory/no issue applies (e.g. a docs-only change). If there's an issue, read it first, and **check for open PRs already referencing it** (`gh pr list --search "<issue-number> in:body"`) before writing code — a reassigned issue can have work in flight elsewhere (#284 shipped duplicate fixes this way).
 3. **Check the relevant `docs/` page(s) before proposing or writing any change** — every session, regardless of how small the task looks.
+4. **Know today's actual date before judging anything as current or stale.** Don't assume a training cutoff or a remembered date is still right — run `date` (or equivalent) if there's any doubt. A "recent" commit, discussion, or milestone deadline is only recent relative to the real current date, not a guess.
 
-Skip a question only if the user's first message already answers it. Steps 2's open-PR check and step 3 are never skipped.
+Skip a question only if the user's first message already answers it. Steps 2's open-PR check, 3, and 4 are never skipped.
+
+## Flagging drift when you see it
+
+When a task has you reading an issue, doc, discussion, or deploy state anyway, check whether it's actually current before acting on it — don't silently work inside stale context. This has caught real problems before: a process rule that covered one required field but not a near-identical one right next to it, so new issues quietly shipped incomplete; a summary doc built from a single repo's tracker when the real work spanned several; a production release that had silently failed weeks earlier, unnoticed until the next deploy attempt surfaced it.
+
+This is **reactive, not a standing scan** — check what you're already touching, don't go looking for staleness unprompted. One exception: early in a session, a cheap check of whether `business-operations` discussion #23 has a comment for the current calendar week is worth doing and saying one line about either way — that thread is the team's actual weekly pulse, and a missing kickoff comment is a real, high-value signal. Once you've confirmed it for the week, no need to re-check it again in later sessions that same week.
+
+Applies to everyone, not just Brighton — but tune the delivery per the same split as "Working with Madrena" below: terse and direct for Brighton/Kundai/Omar/Munashe, framed without alarm for Madrena (a flagged staleness issue is information, not a mistake she made).
 
 ## Working with Madrena
 
