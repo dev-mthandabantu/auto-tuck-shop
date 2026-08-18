@@ -258,22 +258,6 @@ def format_low_stock_summary(snapshot: BusinessSnapshot) -> str:
     return "\n".join(lines)
 
 
-def format_profit_summary(snapshot: BusinessSnapshot) -> str:
-    lines = [f"Profit summary for {snapshot.report_date.strftime('%d %b %Y')}:"]
-    lines.append(f"- Revenue: {_display_revenue(snapshot.currency_revenues)}")
-    # NOTE: cost/gross_profit are not tracked per-currency (cost tracking is not
-    # yet implemented — always 0.00, see BusinessSnapshot.cost). Using
-    # snapshot.currency here remains inaccurate whenever a shop's actual currency
-    # differs from company.currency; fixing this fully requires a per-currency
-    # cost data model, out of scope here. format_profit_summary/send_profit_summary
-    # have no callers in the live pilot flow (confirmed via repo-wide grep) — see
-    # tracking issue for profit tracking as a stub.
-    lines.append(f"- Product cost: {format_price(snapshot.cost, snapshot.currency)}")
-    lines.append(f"- Gross profit: {format_price(snapshot.gross_profit, snapshot.currency)}")
-    lines.append("- Expenses: not tracked separately yet")
-    return "\n".join(lines)
-
-
 def build_comparison_context(company: Company, report_date: datetime.date | None = None) -> dict:
     """Return week-rank and cumulative data for the current week up to report_date."""
     report_date = report_date or timezone.localdate()
@@ -514,13 +498,6 @@ async def send_low_stock_summary(company: Company, report_date: datetime.date | 
     report_date = report_date or timezone.localdate()
     snapshot = await sync_to_async(build_business_snapshot, thread_sensitive=True)(company, report_date=report_date)
     message = format_low_stock_summary(snapshot)
-    return await send_message_to_company(company, message)
-
-
-async def send_profit_summary(company: Company, report_date: datetime.date | None = None) -> list[str]:
-    report_date = report_date or timezone.localdate()
-    snapshot = await sync_to_async(build_business_snapshot, thread_sensitive=True)(company, report_date=report_date)
-    message = format_profit_summary(snapshot)
     return await send_message_to_company(company, message)
 
 
