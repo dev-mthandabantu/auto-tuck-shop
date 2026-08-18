@@ -62,7 +62,12 @@ def pilot_metrics(request):
         Company.objects.filter(active=True)
         .annotate(
             total_sales=Count(
-                "sales", filter=Q(sales__sale_timestamp__gte=since), distinct=True
+                "sales",
+                filter=Q(
+                    sales__sale_timestamp__gte=since,
+                    sales__status=Sale.Status.CONFIRMED,
+                ),
+                distinct=True,
             ),
             confirmed_sales=Count(
                 "sales",

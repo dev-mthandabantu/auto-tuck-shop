@@ -56,12 +56,14 @@ def test_sale_receipt_has_confirm_and_fix_buttons(send_webhook, poll_outbox, onb
     )
 
 
-def test_sale_auto_confirmed_without_clicking(send_webhook, poll_outbox, onboard_user, unique_phone):
-    """Sales should be auto-confirmed (no need to click confirm)."""
+def test_sale_stays_pending_until_button_clicked(send_webhook, poll_outbox, onboard_user, unique_phone):
+    """Sales should NOT be auto-confirmed — they wait for 'Looks good' or 'Fix mistake'."""
     onboard_user(unique_phone)
 
     btn_info = _send_sale_and_get_buttons(send_webhook, poll_outbox, unique_phone)
     assert btn_info["body"], "Receipt body should not be empty"
+    # The receipt itself proves the sale was created and is awaiting a
+    # decision — confirm/cancel behavior is covered by the tests below.
 
 
 def test_confirm_sale_looks_good(send_webhook, poll_outbox, onboard_user, unique_phone):

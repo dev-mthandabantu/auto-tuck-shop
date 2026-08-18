@@ -89,11 +89,14 @@ class Product(models.Model):
             or 0
         )
 
-        # Sum of sale items
+        # Sum of sale items — only confirmed sales; pending/cancelled sales
+        # haven't actually left the shelf.
+        from apps.sales.models import Sale
+
         sales_total = (
-            SaleItem.objects.filter(product=self).aggregate(total=Sum("quantity"))[
-                "total"
-            ]
+            SaleItem.objects.filter(
+                product=self, sale__status=Sale.Status.CONFIRMED
+            ).aggregate(total=Sum("quantity"))["total"]
             or 0
         )
 

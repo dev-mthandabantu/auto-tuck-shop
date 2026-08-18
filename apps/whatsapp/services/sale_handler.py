@@ -6,8 +6,9 @@ import asyncio
 import logging
 from decimal import Decimal
 
-from django.db import close_old_connections, models
+from django.db import close_old_connections, models, transaction
 
+from apps.catalog.models import ProductPrice
 from apps.core.currencies import format_price
 from apps.core.models import Company
 from apps.sales.models import Sale
@@ -90,14 +91,33 @@ def _get_pending_clarification_sale_id(company_id: int) -> int | None:
 def _get_confirmed_sale(original_message_sid: str | None):
     if not original_message_sid:
         return None
-    try:
-        sale = Sale.objects.get(
-            confirmation_message_sid=original_message_sid,
-            status=Sale.Status.CONFIRMED,
-        )
-        return sale, sale.whatsapp_message_id
-    except Sale.DoesNotExist:
-        return None
+
+    with transaction.atomic():
+        try:
+            # select_for_update locks this row for the transaction: a
+            # concurrent confirm/cancel on the same sale blocks here instead
+            # of also reading PENDING and racing this one.
+            sale = Sale.objects.select_for_update().get(
+                confirmation_message_sid=original_message_sid,
+                status=Sale.Status.PENDING,
+            )
+        except Sale.DoesNotExist:
+            return None
+
+        for item in sale.items.select_related("product").all():
+            if item.unit_price is not None:
+                product = item.product
+                current_price = product.current_price
+                if current_price is None or item.unit_price != current_price:
+                    ProductPrice.objects.create(
+                        product=product,
+                        price=item.unit_price,
+                        currency=item.currency,
+                    )
+        sale.status = Sale.Status.CONFIRMED
+        sale.save(update_fields=["status"])
+
+    return sale, sale.whatsapp_message_id
 
 
 @db_sync_to_async
@@ -118,18 +138,26 @@ def _company_needs_closing_time(company_id: int) -> bool:
 def _get_and_update_sale(original_message_sid: str | None, new_status: str, bot_mistake: bool = False):
     if not original_message_sid:
         return None
-    try:
-        sale = Sale.objects.get(
-            confirmation_message_sid=original_message_sid,
-            status=Sale.Status.CONFIRMED,
-        )
+
+    with transaction.atomic():
+        try:
+            # Sales start PENDING; only a still-pending sale can be confirmed
+            # or cancelled here (a sale already CONFIRMED/CANCELLED means
+            # this button was already processed). select_for_update locks
+            # the row for the transaction so a concurrent confirm/cancel on
+            # the same sale blocks here instead of racing this one.
+            sale = Sale.objects.select_for_update().get(
+                confirmation_message_sid=original_message_sid,
+                status=Sale.Status.PENDING,
+            )
+        except Sale.DoesNotExist:
+            return None
+
         sale.status = new_status
         if bot_mistake:
             sale.flagged_as_bot_mistake = True
         sale.save(update_fields=["status", "flagged_as_bot_mistake"])
         return sale, sale.whatsapp_message_id
-    except Sale.DoesNotExist:
-        return None
 
 
 async def process_sale_message_unified(

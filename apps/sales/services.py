@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from django.db import transaction
 
-from apps.catalog.models import Product, ProductPrice
+from apps.catalog.models import Product
 from apps.sales.models import Sale, SaleItem
 
 if TYPE_CHECKING:
@@ -128,15 +128,6 @@ def create_sale_from_parsed_items(
             sale = Sale.objects.create(
                 whatsapp_message_id=whatsapp_message_id,
                 company=company,
-            )
-
-        # Update stored price if different from current price
-        current_price = product.current_price
-        if current_price is None or unit_price != current_price:
-            ProductPrice.objects.create(
-                product=product,
-                price=unit_price,
-                currency=item_currency,
             )
 
         SaleItem.objects.create(
