@@ -186,7 +186,7 @@ ELEVENLABS_API_KEY = env("ELEVENLABS_API_KEY", default="")
 R2_ACCESS_KEY_ID = env("R2_ACCESS_KEY_ID", default="")
 R2_SECRET_ACCESS_KEY = env("R2_SECRET_ACCESS_KEY", default="")
 R2_ENDPOINT_URL = env("R2_ENDPOINT_URL", default="")
-R2_BUCKET_NAME = env("R2_BUCKET_NAME", default="whatsapp-media").strip()
+R2_BUCKET_NAME = env("R2_BUCKET_NAME").strip()
 R2_PUBLIC_URL = env("R2_PUBLIC_URL", default="")
 
 # Mock WhatsApp client for staging/test (avoid sending real messages)
