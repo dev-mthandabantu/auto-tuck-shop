@@ -34,8 +34,10 @@ RUN set -ex && \
     rm -rf /root/.cache/
 COPY . /code
 
-# Collect static files (using dummy secret for build)
-RUN SECRET_KEY=build-secret python manage.py collectstatic --noinput
+# Collect static files (using dummy values for vars required with no default —
+# collectstatic never touches R2 or the real secret key, this only satisfies
+# Django settings import at build time; real values are injected at runtime)
+RUN SECRET_KEY=build-secret R2_BUCKET_NAME=build-placeholder python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
