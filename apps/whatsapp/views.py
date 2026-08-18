@@ -546,6 +546,7 @@ class WhatsAppWebhookView(View):
                 r2_url=r2_url or "",
                 media_type=media_type,
                 user_profile=profile,
+                caption=caption,
             )
 
     def _download_and_upload_media(self, media_id: str, phone_number: str) -> str | None:

@@ -174,6 +174,7 @@ body {
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
+    position: relative;
 }
 .input-btn {
     background: none; border: none; color: #8696a0;
@@ -223,6 +224,22 @@ body {
 .messages-container::-webkit-scrollbar-track { background: transparent; }
 .messages-container::-webkit-scrollbar-thumb { background-color: #374045; border-radius: 3px; }
 
+/* ── Attach menu ───────────────────────────────────────── */
+.attach-menu {
+    position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
+    background: #233138; border-radius: 10px; padding: 8px;
+    display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 10;
+    white-space: nowrap;
+}
+.attach-menu.visible { display: block; }
+.attach-menu-item {
+    display: flex; align-items: center; gap: 10px;
+    background: none; border: none; color: #e9edef;
+    padding: 8px 12px; border-radius: 6px; cursor: pointer;
+    font-size: 14px; width: 100%; text-align: left;
+}
+.attach-menu-item:hover { background: #2a3942; }
+
 /* ── Status toast ──────────────────────────────────────── */
 .status-toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
@@ -259,6 +276,11 @@ body {
     </main>
 
     <footer class="input-bar" id="inputBar">
+        <button class="input-btn" id="attachBtn" title="Attach" disabled>➕</button>
+        <div class="attach-menu" id="attachMenu">
+            <button class="attach-menu-item" id="attachImageBtn">🖼️ Image</button>
+        </div>
+        <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
         <input type="text" class="message-input" id="messageInput" placeholder="Message" autocomplete="off" disabled>
         <button class="send-btn" id="sendBtn">
             <svg viewBox="0 0 24 24" width="20" height="20">
@@ -288,6 +310,10 @@ class MockWhatsApp {
         this.$input = document.getElementById('messageInput');
         this.$inputBar = document.getElementById('inputBar');
         this.$sendBtn = document.getElementById('sendBtn');
+        this.$attachBtn = document.getElementById('attachBtn');
+        this.$attachMenu = document.getElementById('attachMenu');
+        this.$attachImageBtn = document.getElementById('attachImageBtn');
+        this.$imageFileInput = document.getElementById('imageFileInput');
         this.$phoneInput = document.getElementById('phoneInput');
         this.$startBtn = document.getElementById('startBtn');
         this.$status = document.getElementById('connectionStatus');
@@ -308,6 +334,27 @@ class MockWhatsApp {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendText(); }
         });
         this.$sendBtn.addEventListener('click', () => this.sendText());
+        this.$attachBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.$attachMenu.classList.toggle('visible');
+        });
+        this.$attachImageBtn.addEventListener('click', () => {
+            this.$attachMenu.classList.remove('visible');
+            this.$imageFileInput.click();
+        });
+        this.$imageFileInput.addEventListener('change', () => {
+            const file = this.$imageFileInput.files[0];
+            if (!file) return;
+            const caption = window.prompt('Caption for this image (optional, e.g. "sold 3 cokes"):', this.$input.value.trim());
+            this.$imageFileInput.value = ''; // allow re-selecting the same file later
+            if (caption === null) return; // cancelled
+            this.sendImage(caption, file);
+        });
+        document.addEventListener('click', (e) => {
+            if (!this.$attachMenu.contains(e.target) && e.target !== this.$attachBtn) {
+                this.$attachMenu.classList.remove('visible');
+            }
+        });
     }
 
     // ── Chat lifecycle ─────────────────────────────────
@@ -317,6 +364,7 @@ class MockWhatsApp {
         if (!phone) return;
         this.phone = phone;
         this.$input.disabled = false;
+        this.$attachBtn.disabled = false;
         this.$input.focus();
         this.$status.textContent = `Connected as ${phone}`;
         this.$messages.innerHTML = '';
@@ -391,6 +439,45 @@ class MockWhatsApp {
                     'X-CSRFToken': CSRF_TOKEN,
                 },
                 body: JSON.stringify({ phone: this.phone, type: 'text', text }),
+            });
+            if (!res.ok) {
+                const err = await res.text();
+                this._toast(`Error: ${err}`);
+                this._hideTyping();
+                this.waitingForReply = false;
+            }
+        } catch (e) {
+            this._toast(`Network error: ${e.message}`);
+            this._hideTyping();
+            this.waitingForReply = false;
+        }
+    }
+
+    async sendImage(caption, file) {
+        if (!this.phone) return;
+        caption = (caption || '').trim();
+
+        const previewUrl = file ? URL.createObjectURL(file) : null;
+        this._addSentImageMessage(caption, previewUrl);
+        this.$input.value = '';
+        this.$inputBar.classList.remove('has-text');
+
+        this.waitingForReply = true;
+        this._showTyping();
+
+        try {
+            const formData = new FormData();
+            formData.append('phone', this.phone);
+            formData.append('type', 'image');
+            formData.append('caption', caption);
+            if (file) formData.append('file', file);
+
+            const res = await fetch('/mock-whatsapp/send/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': CSRF_TOKEN,
+                },
+                body: formData,
             });
             if (!res.ok) {
                 const err = await res.text();
@@ -505,6 +592,28 @@ class MockWhatsApp {
                             <path fill="currentColor" d="M11.071.653a.457.457 0 00-.304-.102.493.493 0 00-.381.178l-6.19 7.636-2.405-2.272a.463.463 0 00-.336-.146.47.47 0 00-.343.146l-.311.31a.445.445 0 00-.14.337c0 .136.047.25.14.343l2.996 2.996a.724.724 0 00.508.217.778.778 0 00.56-.217l6.817-8.347a.442.442 0 00.127-.326.457.457 0 00-.14-.343l-.298-.31zm3.583 0a.457.457 0 00-.304-.102.493.493 0 00-.381.178L7.778 8.365l-.637-.637-.31.31a.445.445 0 00-.14.337c0 .136.047.25.14.343l.927.927a.724.724 0 00.508.217.778.778 0 00.56-.217l6.817-8.347a.442.442 0 00.127-.326.457.457 0 00-.14-.343l-.298-.31z"/>
                         </svg>
                     </span>
+                </span>
+            </div>`;
+        this.$messages.appendChild(el);
+        this._scroll();
+    }
+
+    _addSentImageMessage(caption, previewUrl) {
+        const el = document.createElement('div');
+        el.className = 'message sent has-tail image-bubble';
+        const captionHTML = caption ? `<div class="image-caption">${this._formatWA(caption)}</div>` : '';
+        const imageHTML = previewUrl
+            ? `<img src="${previewUrl}" alt="Sent image">`
+            : `<div class="image-placeholder">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#8696a0" stroke-width="1.5"/><circle cx="8.5" cy="8.5" r="1.5" fill="#8696a0"/><path d="M21 15l-5-5L5 21" stroke="#8696a0" stroke-width="1.5" stroke-linecap="round"/></svg>
+                    <span>Image</span>
+                </div>`;
+        el.innerHTML = `
+            <div class="bubble">
+                ${imageHTML}
+                ${captionHTML}
+                <span class="message-meta">
+                    <span class="timestamp">${this._time()}</span>
                 </span>
             </div>`;
         this.$messages.appendChild(el);

@@ -143,3 +143,19 @@ class MediaHandlerTest(TransactionTestCase):
 
         parse_mock.assert_not_called()
         send_mock.assert_called_once()
+
+    def test_caption_is_forwarded_to_vision_parse(self):
+        """#294 regression: an image caption must reach parse_image_for_sale, not get dropped."""
+        no_sale_result = UnifiedMessageResult(intent="other", confidence=0.9)
+        parse_mock = AsyncMock(return_value=no_sale_result)
+        with (
+            patch("apps.whatsapp.services.message_parser.parse_image_for_sale", new=parse_mock),
+            patch("apps.whatsapp.services.webhook_handler._send_response", new=AsyncMock()),
+        ):
+            _run(_process_media_message_async(
+                "msg_006", self.sender, "https://cdn.example.com/img.jpg", "image", self.profile,
+                caption="3 pen @ 2usd each",
+            ))
+
+        parse_mock.assert_called_once()
+        self.assertEqual(parse_mock.call_args.kwargs.get("caption"), "3 pen @ 2usd each")

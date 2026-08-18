@@ -311,6 +311,7 @@ async def _process_media_message_async(
     r2_url: str,
     media_type: str,
     user_profile: UserProfile,
+    caption: str = "",
 ) -> None:
     """Handle an inbound image/video/document from a known user.
 
@@ -332,7 +333,7 @@ async def _process_media_message_async(
         return
 
     try:
-        result = await parse_image_for_sale(r2_url, company=company)
+        result = await parse_image_for_sale(r2_url, company=company, caption=caption)
     except Exception:
         logger.exception(f"Vision parse failed for message {message_id} from {sender}")
         await _send_response(sender, t("media.image_no_sale", lang=lang))
@@ -357,18 +358,19 @@ def handle_incoming_media_message(
     r2_url: str,
     media_type: str,
     user_profile: UserProfile,
+    caption: str = "",
 ) -> None:
     phone_number = _extract_phone_number(sender)
     with get_user_lock(phone_number):
         try:
             close_old_connections()
-            run_async(_process_media_message_async(message_id, sender, r2_url, media_type, user_profile))
+            run_async(_process_media_message_async(message_id, sender, r2_url, media_type, user_profile, caption))
         except django.db.utils.OperationalError:
             logger.exception(f"DB connection error for media message {message_id}, retrying...")
             for conn in connections.all():
                 conn.close()
             try:
-                run_async(_process_media_message_async(message_id, sender, r2_url, media_type, user_profile))
+                run_async(_process_media_message_async(message_id, sender, r2_url, media_type, user_profile, caption))
             except Exception as e:
                 # See handle_incoming_message — the retry is a sibling except, not
                 # covered by the except Exception below, so it needs its own catch.

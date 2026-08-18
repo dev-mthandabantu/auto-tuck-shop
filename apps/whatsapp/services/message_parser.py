@@ -224,6 +224,7 @@ def _save_parse_log(
 async def parse_image_for_sale(
     image_url: str,
     company=None,
+    caption: str = "",
 ) -> UnifiedMessageResult:
     """Use Gemini vision to extract sale data from an image (photo of tally sheet, receipt, etc.).
 
@@ -233,7 +234,7 @@ async def parse_image_for_sale(
     async with track("image_parse"):
         products = await _get_active_products(company)
         from services.openrouter import build_image_parsing_prompt
-        messages = build_image_parsing_prompt(image_url, products)
+        messages = build_image_parsing_prompt(image_url, products, caption=caption)
 
         client = OpenRouterClient(model="google/gemini-2.5-flash")
 

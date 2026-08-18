@@ -40,13 +40,21 @@ class MockSendView(View):
     POST JSON: {"phone": "+27821234567", "text": "hello"}
     or:        {"phone": "+27821234567", "type": "audio"}
     or:        {"phone": "+27821234567", "type": "button", "button_id": "mistake_123"}
+    or:        {"phone": "+27821234567", "type": "image", "caption": "sold 3 cokes"}
+    or (multipart, real image upload):
+               phone=+27821234567&type=image&caption=sold 3 cokes&file=<binary>
     """
 
     def post(self, request: HttpRequest) -> HttpResponse:
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return HttpResponse("Invalid JSON", status=400)
+        if request.content_type.startswith("multipart/form-data"):
+            data = request.POST.dict()
+            uploaded_file = request.FILES.get("file")
+        else:
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return HttpResponse("Invalid JSON", status=400)
+            uploaded_file = None
 
         phone = data.get("phone", "").strip()
         if not phone:
@@ -93,6 +101,20 @@ class MockSendView(View):
                 },
                 "context": {"id": original_message_id},
             }
+        elif msg_type == "image":
+            media_id = f"mock_media_{uuid.uuid4().hex[:12]}"
+            if uploaded_file:
+                image_bytes = uploaded_file.read()
+                mime_type = uploaded_file.content_type or "image/jpeg"
+            else:
+                image_bytes, mime_type = b"", "image/jpeg"
+            MockWhatsAppClient.media_downloads[media_id] = (image_bytes, mime_type)
+            message = {
+                "id": message_id,
+                "from": from_number,
+                "type": "image",
+                "image": {"id": media_id, "caption": data.get("caption", "")},
+            }
         else:
             return HttpResponse(f"Unknown message type: {msg_type}", status=400)
 
@@ -103,6 +125,9 @@ class MockSendView(View):
         elif msg_type == "button":
             button_id = data.get("button_id", "")
             MockWhatsAppClient.add_inbound(phone, f"[Button: {button_id}]")
+        elif msg_type == "image":
+            caption = data.get("caption", "")
+            MockWhatsAppClient.add_inbound(phone, f"[Image message]: {caption}" if caption else "[Image message]")
 
         # Feed directly into the webhook handler
         view = WhatsAppWebhookView()

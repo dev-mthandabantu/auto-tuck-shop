@@ -283,6 +283,7 @@ IMPORTANT:
 def build_image_parsing_prompt(
     image_url: str,
     products: list[Product] | None = None,
+    caption: str = "",
 ) -> list[dict]:
     """Build multimodal message list for vision-based sale extraction from an image."""
     if products is None:
@@ -291,6 +292,7 @@ def build_image_parsing_prompt(
     product_list = "\n".join(f"- {p.name}" for p in products) if products else "(No products registered yet)"
     now = timezone.localtime()
     datetime_context = now.strftime("%A, %d %B %Y %H:%M %Z")
+    caption_context = f"\n\nCaption sent with this image: {caption}" if caption else ""
 
     return [
         {"role": "system", "content": IMAGE_SALE_PARSING_PROMPT},
@@ -301,8 +303,9 @@ def build_image_parsing_prompt(
                     "type": "text",
                     "text": (
                         f"Current date and time: {datetime_context}\n\n"
-                        f"Available products:\n{product_list}\n\n"
-                        "Extract any sale data from this image and return JSON:"
+                        f"Available products:\n{product_list}"
+                        f"{caption_context}\n\n"
+                        "Extract any sale data from this image and its caption (if any), and return JSON:"
                     ),
                 },
                 {"type": "image_url", "image_url": {"url": image_url}},

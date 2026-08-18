@@ -30,6 +30,12 @@ Owners can send audio notes instead of typing. The system:
 
 Supported formats: OGG, MP3, M4A, AAC, AMR.
 
+## Sale Recording from Images
+
+Owners can send a photo (e.g. a tally sheet or receipt) instead of typing. Gemini vision extracts sale data from the image. Any caption sent alongside the image is included in the vision prompt, so sale details can come from the caption, the image, or both. If no readable sale data is found, the bot replies with a fallback prompting the owner to type or send a voice note instead.
+
+**Implementation:** `apps/whatsapp/services/webhook_handler.py::_process_media_message_async` → `apps/whatsapp/services/message_parser.py::parse_image_for_sale` → `services/openrouter/prompts.py::build_image_parsing_prompt`.
+
 ## Language Support
 
 English and Shona are fully supported. Language is selected at first message via buttons and stored per user. All bot replies, prompts, confirmations, and error messages respect the user's language preference.
@@ -117,6 +123,6 @@ The nudge system sends proactive messages to shops that haven't been active rece
 
 ## Staging and QA
 
-- Mock WhatsApp UI at `/mock-whatsapp/` — send messages and see bot replies without a real WhatsApp number
+- Mock WhatsApp UI at `/mock-whatsapp/` — send messages and see bot replies without a real WhatsApp number, including image uploads with captions (attach button in the mock chat UI)
 - Integration test suite (`tests/`) runs against live staging over HTTP
 - Mock media endpoint for testing audio flows without real audio files

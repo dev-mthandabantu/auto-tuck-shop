@@ -57,7 +57,7 @@ Open items: GitHub project board, not here. Match any task to an open issue; che
 ## Where to find context
 
 - **Service entry points:** `apps/whatsapp/services/` — webhook_handler (main entry), sale_handler, waitlist_handler, business_reports, nudge_service, media_handler, message_parser, report_card, whatsapp_client
-- **LLM system prompt (parsing tuning):** `services/openrouter/prompts.py`
+- **LLM system prompt (parsing tuning):** `services/openrouter/prompts.py` — text parsing (`build_unified_parsing_prompt`) and image/vision parsing (`build_image_parsing_prompt`)
 - **User-facing strings (EN + Shona):** `apps/whatsapp/locales/en.json`, `sn.json`
 - **Unit tests:** `python manage.py test unit_tests`
 - **Staging integration tests (manual only):** `python -m pytest tests/ -x` (requires `.env.staging`) — not in CI, see #82
