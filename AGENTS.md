@@ -104,7 +104,7 @@ Production is live. A change that doesn't support the 20-shop pilot or fix a rea
 ## Shipping flow
 
 1. **Branch off main**, one branch per issue (e.g. `fix/duplicate-language-prompt`).
-2. **Open a PR** — title includes the issue number. Fill in the PR template properly; Plan/Prediction is written *before* reviewing your own diff, not after.
+2. **Open a PR** — title includes the issue number. Fill in the PR template properly; Plan/Prediction is written *before* reviewing your own diff, not after. If it touches rendered UI (Django admin, report card images, WhatsApp message/button rendering), attach a screenshot/GIF/video — see the PR Readiness checklist.
 3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly).
 4. **Approving reviewers: Brighton, Omar, Kundai, or Munashe** — branch protection requires one approval before merge. Madrena is not a required/approving reviewer (see "Working with Madrena") — she can still read PRs and ask questions as part of learning. **Action item, not yet done:** the actual GitHub branch protection rule on `main` still needs manual updating to match this — check Settings → Branches → main → required reviewers.
 5. **Merge** once approved — squash merge, branch deleted.

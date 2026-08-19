@@ -27,6 +27,13 @@ Fixes #
 - [ ] Every changed file is intentionally in scope
 - [ ] I can explain the affected user flow, architecture, risks, and validation in my own words
 - [ ] The actual diff matches what I predicted above — if it doesn't, I've explained why in Implementation Notes
+- [ ] If this PR changes rendered UI (Django admin pages, report card images, WhatsApp message/button rendering): attached a screenshot, GIF, or short video showing it — not applicable otherwise
+
+<!-- Why screenshots only for rendered UI, not everything: alignment, spacing, column order, and
+     what an image actually looks like can't be proven by careful wording — a picture is the only
+     evidence that's actually stronger than prose there. For backend/parsing/logic changes, a good
+     test assertion is already better evidence than a screenshot would be — that's what Testing/
+     Validation below is for, don't duplicate it with a screenshot of a terminal. -->
 
 <!-- High-risk categories, not an exhaustive file list — ask "does this change touch one of these?":
      - Message dispatch/routing (webhook_handler.py, views.py, message_parser.py): a dropped field or unhandled branch here means the bot goes silent (#284)
