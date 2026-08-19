@@ -21,6 +21,8 @@ When a task has you reading an issue, doc, discussion, or deploy state anyway, c
 
 This is **reactive, not a standing scan** — check what you're already touching, don't go looking for staleness unprompted. One exception: early in a session, a cheap check of whether `business-operations` discussion #23 has a comment for the current calendar week is worth doing and saying one line about either way — that thread is the team's actual weekly pulse, and a missing kickoff comment is a real, high-value signal. Once you've confirmed it for the week, no need to re-check it again in later sessions that same week.
 
+When the question is "what should person X actually work on," check this repo's own [discussion #304 — "Roadmap: who's working on what"](https://github.com/aakitech/auto-tuck-shop/discussions/304) too, not just #23. #23 carries the live sprint narrative (deadlines, blockers, urgency) across all three repos; #304 is the standing per-person "what's your lane in ATS" picture and is often the more specific source for an individual's assignments here. Use #23 for what's urgent, #304 for whose desk something sits on.
+
 Applies to everyone, not just Brighton — but tune the delivery per the same split as "Working with Madrena" below: terse and direct for Brighton/Kundai/Omar/Munashe, framed without alarm for Madrena (a flagged staleness issue is information, not a mistake she made).
 
 ## Working with Madrena
