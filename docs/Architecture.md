@@ -170,6 +170,26 @@ Admin notified via WhatsApp with Approve/Reject buttons
         (intercepted pre-LLM; short message + parseable time)
 ```
 
+## Pilot Operations Visibility
+
+`CompanyAdmin` (`apps/core/admin.py`) surfaces per-shop pilot health directly in Django admin
+(`/admin/core/company/`) — no SSH/DB access needed for day-to-day checks:
+
+- **Last confirmed sale** / **last inbound message** — computed via `Subquery` annotations in
+  `get_queryset`, not stored fields. Only `Sale.Status.CONFIRMED` sales count (sales start
+  `PENDING` and only become real activity once confirmed).
+- **Nudge status** — reads `Company.nudge_stage` / `last_nudge_date` / `onboarding_followup_sent` /
+  `zero_contact_followup_count` directly. These only advance on a *confirmed* WhatsApp send success
+  (see `nudge_service.py`), so a stalled value here means either the shop isn't yet eligible or the
+  last attempted automated send failed.
+- **"Silent N+ days" flag/filter** (`NeedsAttentionFilter`, `NEEDS_ATTENTION_DAYS = 7`) — flags
+  active, already-onboarded shops with no confirmed sale *and* no inbound message in the window,
+  excluding known non-pilot numbers (`apps/core/pilot_test_phones.py`, shared with the
+  `pilot_audit` management command so the exclusion list can't drift between the two).
+
+This is passive visibility only — it doesn't page or notify anyone. Proactive alerting when the
+whole pilot goes quiet is a separate, independent mechanism (see #273).
+
 ## Async Execution Model
 
 Gunicorn workers are synchronous. `handle_incoming_message()` calls `run_async()` which:

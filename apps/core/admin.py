@@ -1,23 +1,129 @@
 import asyncio
+from datetime import timedelta
 
 from django.contrib import admin, messages
 from django.db import close_old_connections, transaction
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
+from django.utils import timezone
+
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from apps.core.pilot_test_phones import PILOT_TEST_PHONES
+
+# How many days without a confirmed sale AND without an inbound message before
+# an active, already-onboarded shop is flagged as needing attention (#274).
+NEEDS_ATTENTION_DAYS = 7
+
+
+class NeedsAttentionFilter(admin.SimpleListFilter):
+    title = f"silent {NEEDS_ATTENTION_DAYS}+ days"
+    parameter_name = "needs_attention"
+
+    def lookups(self, request, model_admin):
+        return (("yes", "Needs attention"),)
+
+    def queryset(self, request, queryset):
+        if self.value() != "yes":
+            return queryset
+        cutoff = timezone.now() - timedelta(days=NEEDS_ATTENTION_DAYS)
+        return (
+            queryset.filter(active=True, first_message_date__isnull=False, _is_test_shop=False)
+            .filter(Q(_last_confirmed_sale__isnull=True) | Q(_last_confirmed_sale__lt=cutoff))
+            .filter(Q(_last_inbound_message__isnull=True) | Q(_last_inbound_message__lt=cutoff))
+        )
 
 
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
-    list_display = ["name", "slug", "active", "member_count", "created_at"]
-    list_filter = ["active"]
+    list_display = [
+        "name",
+        "slug",
+        "active",
+        "member_count",
+        "last_confirmed_sale",
+        "last_inbound_message",
+        "nudge_status",
+        "needs_attention_flag",
+        "created_at",
+    ]
+    list_filter = ["active", NeedsAttentionFilter]
     search_fields = ["name", "slug"]
     prepopulated_fields = {"slug": ("name",)}
+
+    def get_queryset(self, request):
+        from apps.sales.models import Sale
+        from apps.whatsapp.models import WhatsAppMessage
+
+        qs = super().get_queryset(request)
+        last_sale_sq = (
+            Sale.objects.filter(company=OuterRef("pk"), status=Sale.Status.CONFIRMED)
+            .order_by("-sale_timestamp")
+            .values("sale_timestamp")[:1]
+        )
+        last_inbound_sq = (
+            WhatsAppMessage.objects.filter(
+                company=OuterRef("pk"), direction=WhatsAppMessage.Direction.INBOUND
+            )
+            .order_by("-timestamp")
+            .values("timestamp")[:1]
+        )
+        # "Any owner-role member matches a test phone" — a single Exists annotation shared
+        # by both needs_attention_flag and NeedsAttentionFilter so the two can't disagree
+        # (a company can have more than one OWNER-role profile; there's no DB constraint
+        # limiting it to one, so picking ".first()" per call site is not reliable — #274 review).
+        test_owner_sq = UserProfile.objects.filter(
+            company=OuterRef("pk"),
+            role=UserProfile.Role.OWNER,
+            phone_number__in=PILOT_TEST_PHONES,
+        )
+        return qs.annotate(
+            _last_confirmed_sale=Subquery(last_sale_sq),
+            _last_inbound_message=Subquery(last_inbound_sq),
+            _is_test_shop=Exists(test_owner_sq),
+        )
 
     def member_count(self, obj):
         return obj.members.count()
 
     member_count.short_description = "Members"
+
+    def last_confirmed_sale(self, obj):
+        return obj._last_confirmed_sale or "never"
+
+    last_confirmed_sale.short_description = "Last sale"
+    last_confirmed_sale.admin_order_field = "_last_confirmed_sale"
+
+    def last_inbound_message(self, obj):
+        return obj._last_inbound_message or "never"
+
+    last_inbound_message.short_description = "Last inbound msg"
+    last_inbound_message.admin_order_field = "_last_inbound_message"
+
+    def nudge_status(self, obj):
+        """Nudge state is only ever advanced on confirmed WhatsApp send success
+        (see nudge_service.py) — so a stalled date/stage here means either the
+        shop isn't eligible yet, or the last attempted send failed."""
+        parts = [f"stage {obj.nudge_stage}"]
+        parts.append(f"last nudge {obj.last_nudge_date}" if obj.last_nudge_date else "never nudged")
+        if obj.onboarding_followup_sent:
+            parts.append("onboarding followup sent")
+        if obj.zero_contact_followup_count:
+            parts.append(f"{obj.zero_contact_followup_count} zero-contact followups")
+        return " · ".join(parts)
+
+    nudge_status.short_description = "Nudge status"
+
+    def needs_attention_flag(self, obj):
+        if not obj.active or not obj.first_message_date or obj._is_test_shop:
+            return False
+        cutoff = timezone.now() - timedelta(days=NEEDS_ATTENTION_DAYS)
+        sale_stale = obj._last_confirmed_sale is None or obj._last_confirmed_sale < cutoff
+        inbound_stale = obj._last_inbound_message is None or obj._last_inbound_message < cutoff
+        return sale_stale and inbound_stale
+
+    needs_attention_flag.boolean = True
+    needs_attention_flag.short_description = f"Silent {NEEDS_ATTENTION_DAYS}+ days"
 
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser
