@@ -140,6 +140,7 @@ def _eligible_ctas(context: dict) -> list[dict]:
     if "reports" not in features:
         add("discovery_weekly_report")
     add("discovery_multi_item")
+    add("discovery_photo_upload")
 
     # Gated CTAs — enabled via settings flags when features ship
     if getattr(settings, "NUDGE_ENABLE_UNDO_CTA", False):

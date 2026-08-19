@@ -101,7 +101,9 @@ The nudge system sends proactive messages to shops that haven't been active rece
 
 **Trigger:** Runs every 15 minutes via `send_nudges`. A shop is eligible if it hasn't recorded a sale in the last 6 hours and is within the active send window.
 
-**LLM selection:** Gemini selects the most contextually appropriate nudge CTA from a set of templates for that shop's onboarding stage. Currently available CTAs: daily summary opt-in (`onboarding_reports`).
+**LLM selection:** Gemini selects the most contextually appropriate nudge CTA from a set of templates for that shop's onboarding stage. CTAs span onboarding (e.g. daily summary opt-in via `onboarding_reports`), retention, and discovery of features the owner hasn't tried yet — full eligibility logic in `nudge_service.py::_eligible_ctas`, this list is illustrative, not exhaustive.
+
+One discovery CTA of note: `discovery_photo_upload` surfaces the existing photo → batch-sale parsing capability (see "Sale Recording from Images" above) as a deliberate end-of-day option for owners who keep a written tally — "kept a written record today? send us a photo." Decided in #258: the underlying vision parsing already handles multi-item handwritten photos and every parsed item goes through the same PENDING → confirm/reject flow as any other sale, so the accuracy risk raised in #258 is bounded the same way a typed multi-item message is. This is a text nudge, not a new WhatsApp template — no Meta submission needed.
 
 **User response:** Nudge messages include interactive buttons. Tapping "Yes, set it up" enters the closing time setup flow. Tapping "Not now" sends a brief acknowledgement and suppresses further nudges for that cycle.
 

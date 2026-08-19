@@ -175,6 +175,19 @@ class EligibleCtasTest(TransactionTestCase):
         keys = [c["key"] for c in _eligible_ctas(context)]
         self.assertIn("retention_no_sales_today", keys)
 
+    def test_discovery_photo_upload_always_eligible(self):
+        # #258: surface the existing photo -> batch-sale parsing capability as a
+        # discovery nudge, same shape as discovery_multi_item — not gated on a
+        # features_used flag, since there's no reliable way to detect "owner
+        # keeps a written record" from message history the way "used reports"
+        # or "sent a multi-item message" can be detected.
+        for context in [
+            {"days_since_onboarding": 3, "streak": 0, "features_used": [], "nudge_stage": 0},
+            {"days_since_onboarding": 20, "streak": 0, "features_used": ["multi_item", "reports"], "nudge_stage": 0},
+        ]:
+            keys = [c["key"] for c in _eligible_ctas(context)]
+            self.assertIn("discovery_photo_upload", keys)
+
 
 class MaybeSendNudgesTest(TransactionTestCase):
 

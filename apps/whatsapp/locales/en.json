@@ -72,6 +72,7 @@
         "retention_yesterday_recap": "Yesterday you recorded {count} sales totalling {currency}{total}. Add today's?",
         "discovery_weekly_report": "Did you know you can ask me *how much did I make this week?* Try it.",
         "discovery_multi_item": "You can record multiple items in one message — e.g. *3 Mazoe $1, 2 bread $0.50*",
+        "discovery_photo_upload": "Kept a written record today? Just send us a photo and we'll capture the sales for you.",
         "insight_best_day": "Your best day this week was {day} with {currency}{total}. What made that day different?",
         "insight_daily_average": "You are averaging {currency}{avg}/day — on track for {currency}{projected} by Sunday."
     },
