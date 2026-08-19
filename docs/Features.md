@@ -105,7 +105,7 @@ The nudge system sends proactive messages to shops that haven't been active rece
 
 One discovery CTA of note: `discovery_photo_upload` surfaces the existing photo → batch-sale parsing capability (see "Sale Recording from Images" above) as a deliberate end-of-day option for owners who keep a written tally — "kept a written record today? send us a photo." Decided in #258: the underlying vision parsing already handles multi-item handwritten photos and every parsed item goes through the same PENDING → confirm/reject flow as any other sale, so the accuracy risk raised in #258 is bounded the same way a typed multi-item message is. This is a text nudge, not a new WhatsApp template — no Meta submission needed.
 
-**User response:** Nudge messages include interactive buttons. Tapping "Yes, set it up" enters the closing time setup flow. Tapping "Not now" sends a brief acknowledgement and suppresses further nudges for that cycle.
+**User response:** Most CTAs (e.g. `discovery_multi_item`, `discovery_photo_upload`, retention CTAs) are plain text — the owner just replies normally, no special handling required. `onboarding_reports` is the one button-type CTA today: tapping "Yes, set it up" enters the closing time setup flow, tapping "Not now" sends a brief acknowledgement and suppresses further nudges for that cycle. See `_eligible_ctas`' `cta_type` per CTA for which is which.
 
 **Implementation:** `apps/whatsapp/services/nudge_service.py` + `send_nudges` management command.
 
