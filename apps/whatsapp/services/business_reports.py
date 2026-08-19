@@ -239,25 +239,6 @@ def format_business_summary(snapshot: BusinessSnapshot) -> str:
     return "\n".join(lines)
 
 
-def format_low_stock_summary(snapshot: BusinessSnapshot) -> str:
-    lines = [f"Low stock for {snapshot.report_date.strftime('%d %b %Y')}:"]
-    if not snapshot.low_stock_items and not snapshot.out_of_stock_items:
-        lines.append("- No low stock items found.")
-        return "\n".join(lines)
-
-    if snapshot.out_of_stock_items:
-        lines.append("Out of stock:")
-        for name, stock in snapshot.out_of_stock_items[:10]:
-            lines.append(f"  • {name}: {stock}")
-
-    if snapshot.low_stock_items:
-        lines.append("Low stock:")
-        for name, stock in snapshot.low_stock_items[:10]:
-            lines.append(f"  • {name}: {stock}")
-
-    return "\n".join(lines)
-
-
 def build_comparison_context(company: Company, report_date: datetime.date | None = None) -> dict:
     """Return week-rank and cumulative data for the current week up to report_date."""
     report_date = report_date or timezone.localdate()
@@ -492,13 +473,6 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
 
     await mark_summary_sent(company.id, report_date)
     return recipients
-
-
-async def send_low_stock_summary(company: Company, report_date: datetime.date | None = None) -> list[str]:
-    report_date = report_date or timezone.localdate()
-    snapshot = await sync_to_async(build_business_snapshot, thread_sensitive=True)(company, report_date=report_date)
-    message = format_low_stock_summary(snapshot)
-    return await send_message_to_company(company, message)
 
 
 async def maybe_send_daily_notifications(now: datetime | None = None) -> dict[str, list[int]]:
