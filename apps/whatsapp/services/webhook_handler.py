@@ -447,8 +447,19 @@ async def _handle_sales_query(
         image_url = await _s2a(upload_report_image, thread_sensitive=True)(
             image_bytes, company.id, report_date
         )
-    except Exception:
-        logger.exception("Failed to generate sales query report card for company %s", company.id)
+    except Exception as e:
+        logger.warning("Failed to generate sales query report card for company %s", company.id, exc_info=e)
+        import sentry_sdk
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("failure_type", "report_card_generation")
+            scope.set_tag("company_id", company.id)
+            scope.set_tag("source", "sales_query_on_demand")
+            scope.set_context("report_card", {
+                "company_id": company.id,
+                "report_date": str(report_date),
+                "source": "sales_query_on_demand",
+            })
+            sentry_sdk.capture_exception(e)
 
     wa_client = get_whatsapp_client()
     if image_url:

@@ -441,8 +441,19 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
         image_url = await sync_to_async(upload_report_image, thread_sensitive=True)(
             image_bytes, company.id, report_date
         )
-    except Exception:
-        logger.exception("Failed to generate report card for company %s", company.id)
+    except Exception as e:
+        logger.warning("Failed to generate report card for company %s", company.id, exc_info=e)
+        import sentry_sdk
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("failure_type", "report_card_generation")
+            scope.set_tag("company_id", company.id)
+            scope.set_tag("source", "send_daily_summary")
+            scope.set_context("report_card", {
+                "company_id": company.id,
+                "report_date": str(report_date),
+                "source": "send_daily_summary",
+            })
+            sentry_sdk.capture_exception(e)
         image_url = None
 
     wa_client = get_whatsapp_client()

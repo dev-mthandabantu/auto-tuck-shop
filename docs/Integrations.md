@@ -110,3 +110,4 @@ Key signals to watch:
 - `botocore.errorfactory.AccessDenied` — R2 permission issues (wrong token type or wrong Cloudflare account)
 - `FieldError` / `AttributeError` — model/query mismatches after migrations
 - Cron monitors going red — daily reports or nudges not firing
+- `failure_type: report_card_generation` — report card image failed to generate or upload; falls back to text-only, so this is the only signal that visual reports are silently degrading. Tagged with `company_id` and `source` (`send_daily_summary` for the scheduled daily report, `sales_query_on_demand` for the on-demand "send daily summary" chat command) — filter/alert on `source` to distinguish the two.
