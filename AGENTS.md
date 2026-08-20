@@ -73,7 +73,7 @@ Open items: GitHub project board, not here. Match any task to an open issue; che
 - **Unit tests:** `python manage.py test unit_tests`
 - **Staging integration tests (manual only):** `python -m pytest tests/ -x` (requires `.env.staging`) — not in CI, see #82
 
-**Confidential/strategic content** (partner trust, funding, team structure, legal, commercial negotiations) goes in `aakitech/internal` (private, discussions/issues only) — this repo is visible to pilot contacts and future interns. See `aakitech/internal` #14 for rationale.
+**Confidential/strategic content** (partner trust, funding, team structure, legal, commercial negotiations) goes in `aakitech/internal` instead of here (both private repos, discussions/issues only) — this repo's access isn't limited to core eng (it includes field/business and intern roles, see Team above), so treat it as the wider-audience one of the two. See `aakitech/internal` #14 for rationale.
 
 ## Docs index
 
