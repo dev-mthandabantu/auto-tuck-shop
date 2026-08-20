@@ -15,6 +15,8 @@ This is the source of truth for any AI assistant working on this repo. Update it
 
 Skip a question only if the user's first message already answers it. Steps 2's open-PR check, 3, and 4 are never skipped.
 
+**This checklist re-runs on every task switch, not just at chat-start.** The risk isn't "old chat session" — it's stale context carried into work it doesn't apply to. A chat continued hours later on the *same* issue carries no extra risk and doesn't need to repeat this. But the moment the task changes — a different issue, a different repo, a different kind of work — treat it exactly like a new session: redo steps 2–4 (open-PR check, relevant docs, current date) before writing anything, even if that switch happens minutes into the same chat. Long-running chats accumulate context from earlier issues that can quietly bias reads of a new one; re-running the checklist is what resets that.
+
 ## Flagging drift when you see it
 
 When a task has you reading an issue, doc, discussion, or deploy state anyway, check whether it's actually current before acting on it — don't silently work inside stale context. This has caught real problems before: a process rule that covered one required field but not a near-identical one right next to it, so new issues quietly shipped incomplete; a summary doc built from a single repo's tracker when the real work spanned several; a production release that had silently failed weeks earlier, unnoticed until the next deploy attempt surfaced it.
