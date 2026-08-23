@@ -80,6 +80,9 @@
         "deferral": "Zvakanaka — tichakutumira. Kana wava ready, ndiudze zvawatengesa ndichengetedze.",
         "question": "Ndinokwanisa kuchengetedza zvekutengesa chete. Ndiudze zvawatengesa, semuenzaniso: *2 Mazoe $3 rimwe*"
     },
+    "help": {
+        "menu": "Ndinogona kukubatsira ne:\n\n*Kurekodha zvawatengesa*\nChingondiudza zvawatengesa, semuenzaniso tumira kuti \"2 Mazoe $3 rimwe\"\n\n*Kutarisa zvawatengesa*\nNdibvunze kuti ndaita marii nhasi?\n\n*Kuwedzera kana kubvisa mutengesi*\nSemuenzaniso tumira kuti \"Isa mutengesi +2637812345678\" kana \"Bvisa mutengesi +2637812345678\"\n\n*Kuchinja mutauro*\nTaura kuti \"taura ne Chirungu\" kana \"taura ne Shona\"\n\n*Kubata support*\nFonera kana tumira WhatsApp ku {support_phone}\n\nChingotumira zvawatengesa chero nguva ndinozvirekodha nekuchengetedza."
+    },
     "media": {
         "image_no_sale": "Handina kukwanisa kuverenga zvekutengesa kubva mufoto rako. Ndiudze zvawatengesa nekunyora kana kutumira audio — semuenzaniso: *2 Mazoe $3 rimwe*",
         "unsupported": "Ndinokwanisa kunzwisisa text, audio, nemafoto chete. Ndiudze zvawatengesa nekunyora kana kutumira audio — semuenzaniso: *2 Mazoe $3 rimwe*"

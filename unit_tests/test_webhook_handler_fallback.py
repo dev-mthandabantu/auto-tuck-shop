@@ -148,3 +148,80 @@ class GreetingSilenceGateTest(TransactionTestCase):
         containing an emoji, only messages that are ENTIRELY emoji/whitespace."""
         send_mock = self._run_other_greeting("\U0001F44D see attached")
         send_mock.assert_called_once()
+
+
+class HelpMenuTest(TransactionTestCase):
+    """#131: help/options/menu (EN + SN) and free-form questions must return the help menu.
+
+    Two distinct paths, both landing on the same t("help.menu", ...) reply:
+    1. Literal fast-path — exact trigger words, matched before the LLM is ever called
+       (mirrors the stop/unsubscribe pattern already in _process_message_async).
+    2. LLM-classified path — other_sub_intent == "question" now routes to help.menu
+       instead of the old generic other.question fallback, since help-seeking phrasing
+       is too varied for a fixed word list to cover on its own.
+    """
+
+    def setUp(self):
+        self.profile = _make_profile(phone="+263771000399")
+        self.sender = self.profile.phone_number
+
+    def test_fast_path_trigger_words_send_help_menu_without_calling_llm(self):
+        """Exact trigger words must short-circuit before parse_message_unified is ever
+        invoked — this is what makes it a genuine fast-path, not just a fast reply."""
+        parse_mock = AsyncMock()
+        send_mock = AsyncMock()
+        for trigger in ("help", "options", "menu", "rubatsiro", "HELP", "Menu"):
+            with self.subTest(trigger=trigger):
+                parse_mock.reset_mock()
+                send_mock.reset_mock()
+                with (
+                    patch("apps.whatsapp.services.webhook_handler.parse_message_unified", new=parse_mock),
+                    patch("apps.whatsapp.services.webhook_handler._send_response", new=send_mock),
+                ):
+                    _run(_process_message_async("msg", self.sender, trigger, self.profile))
+                parse_mock.assert_not_called()
+                send_mock.assert_called_once()
+                self.assertIn("I can help you with", send_mock.call_args[0][1])
+
+    def test_sentence_containing_trigger_word_does_not_fast_path(self):
+        """Matching is on the whole trimmed message, not a substring — a real sentence
+        that happens to contain "help" must still go to the LLM like any other message,
+        not get intercepted as if it were the literal word."""
+        result = UnifiedMessageResult(intent="other", confidence=0.6, other_sub_intent="deferral")
+        parse_mock = AsyncMock(return_value=result)
+        send_mock = AsyncMock()
+        with (
+            patch("apps.whatsapp.services.webhook_handler.parse_message_unified", new=parse_mock),
+            patch("apps.whatsapp.services.webhook_handler._send_response", new=send_mock),
+        ):
+            _run(_process_message_async("msg", self.sender, "I need help with prices", self.profile))
+        parse_mock.assert_called_once()
+
+    def test_llm_question_sub_intent_sends_help_menu(self):
+        """Free-form help-seeking phrasing the fixed word list can't cover (e.g. "how do I
+        delete a sale?") is classified by the LLM as other_sub_intent == "question" and
+        must now route to help.menu instead of the old other.question fallback."""
+        result = UnifiedMessageResult(intent="other", confidence=0.8, other_sub_intent="question")
+        send_mock = AsyncMock()
+        with (
+            patch("apps.whatsapp.services.webhook_handler.parse_message_unified", new=AsyncMock(return_value=result)),
+            patch("apps.whatsapp.services.webhook_handler._send_response", new=send_mock),
+        ):
+            _run(_process_message_async("msg", self.sender, "how do I delete a sale?", self.profile))
+        send_mock.assert_called_once()
+        self.assertIn("I can help you with", send_mock.call_args[0][1])
+
+    def test_shona_language_profile_still_receives_localised_help_menu(self):
+        """t() resolves the localised string internally — this just confirms the call
+        site passes the user's actual language through, not a hardcoded "en"."""
+        self.profile.language = "sn"
+        self.profile.save(update_fields=["language"])
+        send_mock = AsyncMock()
+        with (
+            patch("apps.whatsapp.services.webhook_handler.parse_message_unified", new=AsyncMock()),
+            patch("apps.whatsapp.services.webhook_handler._send_response", new=send_mock),
+        ):
+            _run(_process_message_async("msg", self.sender, "rubatsiro", self.profile))
+        send_mock.assert_called_once()
+        sent_text = send_mock.call_args[0][1]
+        self.assertIn("Ndinogona kukubatsira", sent_text)

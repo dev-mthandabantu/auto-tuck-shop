@@ -172,6 +172,9 @@ META_WHATSAPP_APP_SECRET = env("META_WHATSAPP_APP_SECRET", default="")  # For si
 # Admin Configuration
 ADMIN_PHONE_NUMBER = env("ADMIN_PHONE_NUMBER", default=None)  # Receives waitlist approval notifications
 
+# Support Configuration
+SUPPORT_PHONE_NUMBER = env("SUPPORT_PHONE_NUMBER", default="")  # Shown to shop owners in the help menu (#131)
+
 # OpenRouter Configuration
 OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
 OPENROUTER_MODEL = env("OPENROUTER_MODEL", default="google/gemini-2.5-flash-lite")

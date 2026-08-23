@@ -529,6 +529,11 @@ async def _process_message_async(
             await _send_response(sender, t("nudge.opt_out_confirmed", lang=lang))
             return
 
+        # Intercept help/options/menu before hitting the LLM.
+        if text.strip().lower() in ("help", "options", "menu", "rubatsiro"):
+            await _send_response(sender, t("help.menu", lang=lang, support_phone=settings.SUPPORT_PHONE_NUMBER))
+            return
+
         # Intercept closing time messages before hitting the LLM.
         if company:
             today = timezone.localdate()
@@ -623,7 +628,7 @@ async def _process_message_async(
             if sub == "greeting" and _is_silent_greeting(text):
                 pass  # No response — replying to "hi" / "thanks" adds noise
             elif sub == "question":
-                await _send_response(sender, t("other.question", lang=lang))
+                await _send_response(sender, t("help.menu", lang=lang, support_phone=settings.SUPPORT_PHONE_NUMBER))
             else:  # deferral, unknown, or a "greeting" that wasn't a recognised filler word
                 await _send_response(sender, t("other.deferral", lang=lang))
             return

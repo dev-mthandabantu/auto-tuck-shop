@@ -80,6 +80,16 @@ Shop owners can add assistants by sending: `add assistant +2637812345678`
 
 Assistants can record sales but cannot add other team members. All active members of a company receive the daily summary.
 
+## Help Menu
+
+Owners can ask what the bot can do at any time. Two ways in:
+- **Fast-path trigger words:** `help`, `options`, `menu` (EN) / `rubatsiro`, `menu` (SN) — matched as the whole message, case-insensitive, and answered before the LLM is called.
+- **Free-form questions:** anything the LLM classifies as `other_sub_intent: "question"` (e.g. "how do I delete a sale?") routes to the same reply, since help-seeking phrasing is too varied for a fixed word list alone.
+
+The reply is plain text (not interactive buttons) listing: record a sale, check sales, add/remove an assistant, switch language, and contact support. The support number comes from the `SUPPORT_PHONE_NUMBER` env var, not hardcoded.
+
+**Implementation:** `apps/whatsapp/services/webhook_handler.py::_process_message_async`, locale key `help.menu` in `en.json`/`sn.json`.
+
 ## Onboarding and Waitlist
 
 New phone numbers automatically enter a waitlist. The flow:
