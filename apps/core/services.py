@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from apps.whatsapp.models import WhatsAppMessage
 
 
 class PhoneNumberAlreadyRegisteredError(ValueError):
@@ -98,5 +99,27 @@ def approve_waitlist_entry(
     entry.company = company
     entry.user_profile = profile
     entry.save(update_fields=["status", "approved_at", "approved_by", "company", "user_profile"])
+
+    # Link any pre-approval inbound messages from this phone number — they were
+    # recorded with company=None because no Company existed yet at the time
+    # (see #233). Now that one does, retroactively attach them.
+    orphaned_messages = WhatsAppMessage.objects.filter(
+        phone_number=entry.phone_number, company__isnull=True
+    )
+    earliest_inbound = (
+        orphaned_messages.filter(direction=WhatsAppMessage.Direction.INBOUND)
+        .order_by("timestamp")
+        .values_list("timestamp", flat=True)
+        .first()
+    )
+    orphaned_messages.update(company=company, user_profile=profile)
+
+    # Mirror _record_inbound_message's own first_message_date convention
+    # (apps/whatsapp/views.py) — using the actual historical timestamp of the
+    # earliest backfilled message, not today's date, since these messages
+    # happened in the past, not right now (review on PR #317).
+    if earliest_inbound and not company.first_message_date:
+        company.first_message_date = timezone.localdate(earliest_inbound)
+        company.save(update_fields=["first_message_date"])
 
     return company, profile
