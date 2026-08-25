@@ -328,6 +328,8 @@ class WhatsAppClient:
         components: list | None = None,
     ) -> bool:
         """Send a pre-approved Meta template message (required for out-of-24h-window messages)."""
+        from apps.whatsapp.models import WhatsAppMessage
+
         if not self.access_token or not self.phone_number_id:
             logger.error("Meta WhatsApp credentials not configured for send_template_message")
             return False
@@ -353,7 +355,7 @@ class WhatsAppClient:
                 logger.info(f"Sent template '{template_name}' to {to_number}: {message_id}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="TEXT",
+                    message_type=WhatsAppMessage.MessageType.TEMPLATE,
                     content=f"[template: {template_name}]",
                     whatsapp_message_id=message_id,
                     api_success=True,
@@ -364,7 +366,7 @@ class WhatsAppClient:
                 logger.exception(f"Failed to send template '{template_name}' to {to_number}: {error_msg}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="TEXT",
+                    message_type=WhatsAppMessage.MessageType.TEMPLATE,
                     content=f"[template: {template_name}]",
                     api_success=False,
                     api_error=error_msg,
@@ -375,7 +377,7 @@ class WhatsAppClient:
                 logger.exception(f"Meta WhatsApp request error sending template '{template_name}' to {to_number}: {error_msg}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="TEXT",
+                    message_type=WhatsAppMessage.MessageType.TEMPLATE,
                     content=f"[template: {template_name}]",
                     api_success=False,
                     api_error=error_msg,
