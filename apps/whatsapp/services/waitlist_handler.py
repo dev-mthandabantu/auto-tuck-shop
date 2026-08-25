@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.db import close_old_connections, IntegrityError
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from apps.whatsapp.models import WhatsAppMessage
 from django.conf import settings
 
 from apps.whatsapp.services.webhook_handler import (
@@ -112,23 +113,40 @@ def _create_assistant(phone_number: str, company) -> UserProfile:
         existing.company = company
         existing.role = UserProfile.Role.ASSISTANT
         existing.save(update_fields=["company", "role"])
-        return existing
+        profile = existing
     except UserProfile.DoesNotExist:
-        pass
+        username = "".join(c for c in phone_number if c.isalnum())
+        base_username = username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}_{counter}"
+            counter += 1
+        user = User.objects.create_user(username=username)
+        profile = UserProfile.objects.create(
+            user=user,
+            company=company,
+            role=UserProfile.Role.ASSISTANT,
+            phone_number=phone_number,
+        )
 
-    username = "".join(c for c in phone_number if c.isalnum())
-    base_username = username
-    counter = 1
-    while User.objects.filter(username=username).exists():
-        username = f"{base_username}_{counter}"
-        counter += 1
-    user = User.objects.create_user(username=username)
-    return UserProfile.objects.create(
-        user=user,
-        company=company,
-        role=UserProfile.Role.ASSISTANT,
-        phone_number=phone_number,
-    )
+    # Link any pre-add inbound messages from this phone number — same bug
+    # class as #233 (waitlist approval), just via the assistant-add path
+    # instead. See apps.core.services.approve_waitlist_entry for the original
+    # fix this mirrors.
+    #
+    # Deliberately NOT touching company.first_message_date here, unlike the
+    # owner-approval path: this phone number is an assistant, not the owner,
+    # so their pre-add message history isn't the shop's own history — using
+    # it to backdate first_message_date would be wrong (an assistant added
+    # today could have messaged the bot, unrelated to this shop, years ago).
+    # It's also unreachable in practice: the "add assistant" message that
+    # triggers this function always sets first_message_date first, via
+    # _record_inbound_message, before intent handling ever reaches here.
+    WhatsAppMessage.objects.filter(
+        phone_number=phone_number, company__isnull=True
+    ).update(company=company, user_profile=profile)
+
+    return profile
 
 
 @db_sync_to_async
