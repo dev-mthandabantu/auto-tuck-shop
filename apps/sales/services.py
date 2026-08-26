@@ -5,6 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, TypedDict
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.catalog.models import Product
 from apps.sales.models import Sale, SaleItem
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 # DecimalField(max_digits=10, decimal_places=2) → max abs value is 10^8 - 0.01
 MAX_UNIT_PRICE = Decimal("99999999.99")
+
+# How long a sale can sit unconfirmed before it's auto-cancelled.
+STALE_PENDING_THRESHOLD = timezone.timedelta(hours=24)
 
 
 class PriceOverflowError(ValueError):
@@ -147,3 +151,16 @@ def create_sale_from_parsed_items(
         "unmatched_items": unmatched_items,
         "ambiguous_items": ambiguous_items,
     }
+
+
+def auto_cancel_stale_pending_sales(now=None) -> int:
+    """Cancel PENDING sales the owner never confirmed or rejected within
+    STALE_PENDING_THRESHOLD. Returns the number of sales cancelled."""
+    now = now or timezone.now()
+    cutoff = now - STALE_PENDING_THRESHOLD
+    stale_sales = Sale.objects.filter(status=Sale.Status.PENDING, sale_timestamp__lt=cutoff)
+    count = stale_sales.count()
+    if count:
+        stale_sales.update(status=Sale.Status.CANCELLED)
+        logger.info("Auto-cancelled %s stale PENDING sale(s) older than %s", count, cutoff)
+    return count
