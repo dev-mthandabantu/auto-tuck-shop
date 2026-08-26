@@ -127,6 +127,8 @@ class WhatsAppClient:
         Returns:
             The message ID if successful, None otherwise
         """
+        from apps.whatsapp.models import WhatsAppMessage
+
         # Create content string with buttons for recording
         button_titles = [btn["title"] for btn in buttons[:3]]
         content_with_buttons = f"{body}\n\nButtons: {', '.join(button_titles)}"
@@ -135,7 +137,7 @@ class WhatsAppClient:
             logger.error("Meta WhatsApp credentials not configured")
             await _record_outbound_message(
                 phone_number=to,
-                message_type="INTERACTIVE_BUTTON",
+                message_type=WhatsAppMessage.MessageType.INTERACTIVE_BUTTON,
                 content=content_with_buttons,
                 api_success=False,
                 api_error="Meta WhatsApp credentials not configured",
@@ -191,7 +193,7 @@ class WhatsAppClient:
                 # Record successful message
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="INTERACTIVE_BUTTON",
+                    message_type=WhatsAppMessage.MessageType.INTERACTIVE_BUTTON,
                     content=content_with_buttons,
                     whatsapp_message_id=message_id,
                     api_success=True,
@@ -205,7 +207,7 @@ class WhatsAppClient:
                 # Record failed message
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="INTERACTIVE_BUTTON",
+                    message_type=WhatsAppMessage.MessageType.INTERACTIVE_BUTTON,
                     content=content_with_buttons,
                     api_success=False,
                     api_error=error_msg,
@@ -219,7 +221,7 @@ class WhatsAppClient:
                 # Record failed message
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="INTERACTIVE_BUTTON",
+                    message_type=WhatsAppMessage.MessageType.INTERACTIVE_BUTTON,
                     content=content_with_buttons,
                     api_success=False,
                     api_error=error_msg,
@@ -239,12 +241,14 @@ class WhatsAppClient:
         Returns:
             True if successful, False otherwise
         """
+        from apps.whatsapp.models import WhatsAppMessage
+
         async with track("meta_send"):
             if not self.access_token or not self.phone_number_id:
                 logger.error("Meta WhatsApp credentials not configured")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="TEXT",
+                    message_type=WhatsAppMessage.MessageType.TEXT,
                     content=text,
                     api_success=False,
                     api_error="Meta WhatsApp credentials not configured",
@@ -284,7 +288,7 @@ class WhatsAppClient:
                     # Record successful message
                     await _record_outbound_message(
                         phone_number=to,
-                        message_type="TEXT",
+                        message_type=WhatsAppMessage.MessageType.TEXT,
                         content=text,
                         whatsapp_message_id=message_id,
                         api_success=True,
@@ -298,7 +302,7 @@ class WhatsAppClient:
                     # Record failed message
                     await _record_outbound_message(
                         phone_number=to,
-                        message_type="TEXT",
+                        message_type=WhatsAppMessage.MessageType.TEXT,
                         content=text,
                         api_success=False,
                         api_error=error_msg,
@@ -312,7 +316,7 @@ class WhatsAppClient:
                     # Record failed message
                     await _record_outbound_message(
                         phone_number=to,
-                        message_type="TEXT",
+                        message_type=WhatsAppMessage.MessageType.TEXT,
                         content=text,
                         api_success=False,
                         api_error=error_msg,
@@ -441,11 +445,13 @@ class WhatsAppClient:
 
     async def send_image(self, to: str, image_url: str, caption: str = "") -> bool:
         """Send a WhatsApp image message via URL via Meta Cloud API."""
+        from apps.whatsapp.models import WhatsAppMessage
+
         if not self.access_token or not self.phone_number_id:
             logger.error("Meta WhatsApp credentials not configured")
             await _record_outbound_message(
                 phone_number=to,
-                message_type="IMAGE",
+                message_type=WhatsAppMessage.MessageType.IMAGE,
                 content=caption,
                 api_success=False,
                 api_error="Meta WhatsApp credentials not configured",
@@ -478,7 +484,7 @@ class WhatsAppClient:
                 logger.info(f"Sent WhatsApp image to {to_number}, id={message_id}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="IMAGE",
+                    message_type=WhatsAppMessage.MessageType.IMAGE,
                     content=caption,
                     whatsapp_message_id=message_id,
                     api_success=True,
@@ -489,7 +495,7 @@ class WhatsAppClient:
                 logger.exception(f"Failed to send WhatsApp image: {error_msg}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="IMAGE",
+                    message_type=WhatsAppMessage.MessageType.IMAGE,
                     content=caption,
                     api_success=False,
                     api_error=error_msg,
@@ -500,7 +506,7 @@ class WhatsAppClient:
                 logger.exception(f"Meta WhatsApp image request error: {error_msg}")
                 await _record_outbound_message(
                     phone_number=to,
-                    message_type="IMAGE",
+                    message_type=WhatsAppMessage.MessageType.IMAGE,
                     content=caption,
                     api_success=False,
                     api_error=error_msg,

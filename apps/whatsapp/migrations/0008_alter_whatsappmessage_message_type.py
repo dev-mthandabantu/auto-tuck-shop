@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='whatsappmessage',
             name='message_type',
-            field=models.CharField(choices=[('text', 'Text'), ('template', 'Template'), ('interactive_button', 'Interactive Button'), ('button_response', 'Button Response'), ('audio', 'Audio'), ('unknown', 'Unknown')], max_length=30),
+            field=models.CharField(choices=[('text', 'Text'), ('template', 'Template'), ('image', 'Image'), ('interactive_button', 'Interactive Button'), ('button_response', 'Button Response'), ('audio', 'Audio'), ('unknown', 'Unknown')], max_length=30),
         ),
     ]

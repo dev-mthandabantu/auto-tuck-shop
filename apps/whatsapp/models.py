@@ -11,6 +11,7 @@ class WhatsAppMessage(models.Model):
     class MessageType(models.TextChoices):
         TEXT = "text", "Text"
         TEMPLATE = "template", "Template"
+        IMAGE = "image", "Image"
         INTERACTIVE_BUTTON = "interactive_button", "Interactive Button"
         BUTTON_RESPONSE = "button_response", "Button Response"
         AUDIO = "audio", "Audio"
