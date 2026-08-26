@@ -27,6 +27,27 @@ _SHONA_TEMPLATE_NAMES = {
     "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
     "ats_reengagement": "ats_reengagement_shona_version",
     "ats_daily_summary": "ats_daily_summary_shona_version",
+    "ats_nudge_onboarding_first_sale": "ats_nudge_onboarding_first_sale_shona_version",
+    "ats_nudge_onboarding_shona_tip": "ats_nudge_onboarding_shona_tip_shona_version",
+    "ats_nudge_retention_no_sales_today": "ats_nudge_retention_no_sales_today_shona_version",
+    "ats_nudge_retention_streak": "ats_nudge_retention_streak_shona_version",
+    "ats_nudge_discovery_weekly_report": "ats_nudge_discovery_weekly_report_shona_version",
+    "ats_nudge_discovery_multi_item": "ats_nudge_discovery_multi_item_shona_version",
+    "ats_nudge_discovery_photo_upload": "ats_nudge_discovery_photo_upload_shona_version",
+}
+
+# Maps pick_nudge_cta's cta_key to the Meta template submitted for it (#251).
+# onboarding_reports is deliberately excluded — its button handling is still
+# an open question (see #251 discussion) — falls back to the old fixed
+# ats_daily_nudge template until that's resolved.
+_NUDGE_TEMPLATE_NAMES = {
+    "onboarding_first_sale": "ats_nudge_onboarding_first_sale",
+    "onboarding_shona_tip": "ats_nudge_onboarding_shona_tip",
+    "retention_no_sales_today": "ats_nudge_retention_no_sales_today",
+    "retention_streak": "ats_nudge_retention_streak",
+    "discovery_weekly_report": "ats_nudge_discovery_weekly_report",
+    "discovery_multi_item": "ats_nudge_discovery_multi_item",
+    "discovery_photo_upload": "ats_nudge_discovery_photo_upload",
 }
 
 
@@ -182,7 +203,7 @@ async def pick_nudge_cta(context: dict, lang: str) -> dict | None:
             message = selected["text"] if selected else None
         if not message:
             return None
-        return {"message": message, "cta_type": cta_type}
+        return {"cta_key": cta_key, "message": message, "cta_type": cta_type}
     except Exception:
         logger.exception("LLM CTA picker failed — skipping nudge")
         return None
@@ -269,7 +290,7 @@ def _get_non_opted_out_phones(company) -> list[str]:
     )
 
 
-async def _send_nudge(company, message: str, cta_type: str = "text", lang: str = "en") -> bool:
+async def _send_nudge(company, cta_key: str, message: str, cta_type: str = "text", lang: str = "en", streak: int = 0) -> bool:
     """Send the nudge to every non-opted-out recipient. Returns True only if all sends succeeded."""
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     from apps.whatsapp.services.webhook_handler import t
@@ -279,8 +300,13 @@ async def _send_nudge(company, message: str, cta_type: str = "text", lang: str =
     all_succeeded = True
     for phone in phones:
         if settings.USE_TEMPLATE_MESSAGES:
-            components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
-            template_name = _template_name_for_lang("ats_daily_nudge", lang)
+            template_name = _template_name_for_lang(_NUDGE_TEMPLATE_NAMES.get(cta_key, "ats_daily_nudge"), lang)
+            if cta_key == "retention_streak":
+                components = [{"type": "body", "parameters": [{"type": "text", "text": str(streak)}]}]
+            elif cta_key in _NUDGE_TEMPLATE_NAMES:
+                components = []
+            else:
+                components = [{"type": "body", "parameters": [{"type": "text", "text": owner_name}]}]
             success = await client.send_template_message(phone, template_name, components=components)
         elif cta_type == "button":
             success = await client.send_message_with_buttons(
@@ -335,7 +361,14 @@ async def maybe_send_nudges(now=None) -> dict:
             continue
 
         try:
-            success = await _send_nudge(company, cta["message"], cta_type=cta["cta_type"], lang=lang)
+            success = await _send_nudge(
+                company,
+                cta["cta_key"],
+                cta["message"],
+                cta_type=cta["cta_type"],
+                lang=lang,
+                streak=context.get("streak", 0),
+            )
         except Exception:
             logger.exception("Failed to send nudge to company %s", company.id)
             skipped.append(company.id)

@@ -215,7 +215,7 @@ class MaybeSendNudgesTest(TransactionTestCase):
     def test_sends_nudge_to_eligible_shop(self, _mock_window):
         async def _run_with_mocks():
             with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
-                 patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
+                 patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"cta_key": "retention_no_sales_today", "message": "What did you sell today?", "cta_type": "text"})), \
                  patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
                 return await maybe_send_nudges()
         result = _run(_run_with_mocks())
@@ -413,7 +413,7 @@ class ReengagementTest(TransactionTestCase):
         self._make_sale(days_ago=3)
         with patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True), \
              patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
-             patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"message": "What did you sell today?", "cta_type": "text"})), \
+             patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"cta_key": "retention_no_sales_today", "message": "What did you sell today?", "cta_type": "text"})), \
              patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)):
             nudge_result = _run(maybe_send_nudges())
         self.assertIn(self.company.id, nudge_result["sent"])
