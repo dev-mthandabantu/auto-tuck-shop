@@ -43,6 +43,7 @@ class Company(models.Model):
     zero_contact_followup_count = models.PositiveSmallIntegerField(default=0, help_text="Number of ats_zero_contact_followup sends for a shop that has never sent a single message — stops at 3 (day 2/5/7 after approval)")
     last_zero_contact_followup_date = models.DateField(null=True, blank=True, help_text="Last date ats_zero_contact_followup was sent — prevents double-sending same day")
     last_automated_message_date = models.DateField(null=True, blank=True, help_text="Last date any automated nudge/followup message was sent to this company — prevents two different nudge mechanisms firing same-day")
+    unnamed_shop_followup_sent = models.BooleanField(default=False, help_text="ats_unnamed_shop_followup template has been sent — don't send again (see #316)")
 
     def format_price(self, amount):
         """Format a price using this company's currency."""

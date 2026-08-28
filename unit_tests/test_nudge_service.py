@@ -18,6 +18,7 @@ from apps.whatsapp.services.nudge_service import (
     maybe_send_nudges,
     maybe_send_onboarding_followup,
     maybe_send_reengagement,
+    maybe_send_unnamed_shop_followup,
 )
 
 
@@ -320,6 +321,55 @@ class OnboardingFollowupTest(TransactionTestCase):
         self.company.onboarding_followup_sent = True
         self.company.save()
         result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+
+class UnnamedShopFollowupTest(TransactionTestCase):
+    """#316: ask once for the real name if a shop is still stuck on the
+    "Unnamed Shop" placeholder set at approval time."""
+
+    def setUp(self):
+        self.company = _make_company(name="Unnamed Shop", first_message_date=date.today() - timedelta(days=2))
+        self.profile = _make_user_profile(self.company, "+263771000300")
+
+    def test_sends_shona_template_to_shona_speaking_owner(self):
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_unnamed_shop_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000300", "ats_unnamed_shop_followup_shona_version")
+        self.company.refresh_from_db()
+        self.assertTrue(self.company.unnamed_shop_followup_sent)
+
+    def test_sends_english_template_to_english_speaking_owner(self):
+        self.profile.language = "en"
+        self.profile.save()
+        send_mock = AsyncMock(return_value=True)
+        async def _run_test():
+            with patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_mock)):
+                return await maybe_send_unnamed_shop_followup()
+        result = _run(_run_test())
+        self.assertIn(self.company.id, result["sent"])
+        send_mock.assert_called_once_with("+263771000300", "ats_unnamed_shop_followup")
+
+    def test_skips_shop_that_already_has_a_real_name(self):
+        self.company.name = "Mai Ati Mini Eatery"
+        self.company.save()
+        result = _run(maybe_send_unnamed_shop_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_shop_already_sent(self):
+        self.company.unnamed_shop_followup_sent = True
+        self.company.save()
+        result = _run(maybe_send_unnamed_shop_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_skips_inactive_shop(self):
+        self.company.active = False
+        self.company.save()
+        result = _run(maybe_send_unnamed_shop_followup())
         self.assertNotIn(self.company.id, result["sent"])
 
 

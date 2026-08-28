@@ -34,6 +34,10 @@ _SHONA_TEMPLATE_NAMES = {
     "ats_nudge_discovery_weekly_report": "ats_nudge_discovery_weekly_report_shona_version",
     "ats_nudge_discovery_multi_item": "ats_nudge_discovery_multi_item_shona_version",
     "ats_nudge_discovery_photo_upload": "ats_nudge_discovery_photo_upload_shona_version",
+    # ats_unnamed_shop_followup itself (English + Shona) is not yet submitted
+    # to Meta — see #316. Code/copy ready now, template submission is a
+    # separate fast-follow, same pattern as #251's newer CTAs.
+    "ats_unnamed_shop_followup": "ats_unnamed_shop_followup_shona_version",
 }
 
 # Maps pick_nudge_cta's cta_key to the Meta template submitted for it (#251).
@@ -445,6 +449,67 @@ async def maybe_send_onboarding_followup() -> dict:
                 skipped.append(company.id)
         except Exception:
             logger.exception("Failed to send onboarding followup to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+@sync_to_async
+def _load_unnamed_shop_followup_candidates():
+    """Shops still on the "Unnamed Shop" placeholder set at approval time
+    (see apps.core.services.approve_waitlist_entry) — ask once for the real
+    name. #316."""
+    from apps.core.models import Company
+    close_old_connections()
+    return list(
+        Company.objects.filter(
+            active=True,
+            name="Unnamed Shop",
+            unnamed_shop_followup_sent=False,
+        )
+    )
+
+
+@sync_to_async
+def _mark_unnamed_shop_followup_sent(company) -> None:
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(unnamed_shop_followup_sent=True)
+
+
+async def maybe_send_unnamed_shop_followup() -> dict:
+    """Ask shops still stuck on the "Unnamed Shop" placeholder for their real
+    name — one-shot, same pattern as maybe_send_onboarding_followup. #316."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    candidates = await _load_unnamed_shop_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        if await _already_messaged_today(company):
+            logger.debug("Company %s already messaged today — skipping unnamed-shop followup", company.id)
+            skipped.append(company.id)
+            continue
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        lang = await _company_owner_lang(company)
+        template_name = _template_name_for_lang("ats_unnamed_shop_followup", lang)
+        try:
+            all_succeeded = True
+            for phone in phones:
+                success = await client.send_template_message(phone, template_name)
+                all_succeeded = all_succeeded and bool(success)
+            if all_succeeded:
+                await _mark_unnamed_shop_followup_sent(company)
+                await _mark_automated_message_sent(company)
+                logger.info("Unnamed-shop followup sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Unnamed-shop followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send unnamed-shop followup to company %s", company.id)
             skipped.append(company.id)
     return {"sent": sent, "skipped": skipped}
 

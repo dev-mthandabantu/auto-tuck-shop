@@ -10,7 +10,7 @@ import datetime
 from django.contrib.auth.models import User
 from django.test import RequestFactory, TestCase
 
-from apps.core.admin import CompanyAdmin, NeedsAttentionFilter, NEEDS_ATTENTION_DAYS
+from apps.core.admin import CompanyAdmin, NeedsAttentionFilter, UnnamedShopFilter, NEEDS_ATTENTION_DAYS
 from apps.core.models import Company, UserProfile
 from apps.core.pilot_test_phones import PILOT_TEST_PHONES
 from apps.sales.models import Sale
@@ -247,3 +247,30 @@ class NeedsAttentionFilterTest(TestCase):
         self.assertFalse(flag_result)
         self.assertFalse(filter_includes_it)
         self.assertEqual(flag_result, filter_includes_it)
+
+
+class NeedsNameFlagTest(TestCase):
+    """#316: flag/filter for shops still stuck on the "Unnamed Shop" placeholder."""
+
+    def setUp(self):
+        self.admin = CompanyAdmin(Company, django_admin.site)
+
+    def test_unnamed_shop_flagged(self):
+        company = _make_company(slug="still-unnamed", name="Unnamed Shop")
+        self.assertTrue(self.admin.needs_name_flag(company))
+
+    def test_named_shop_not_flagged(self):
+        company = _make_company(slug="has-a-name", name="Mai Ati Mini Eatery")
+        self.assertFalse(self.admin.needs_name_flag(company))
+
+    def test_filter_returns_only_unnamed_shops(self):
+        unnamed = _make_company(slug="filter-unnamed", name="Unnamed Shop")
+        named = _make_company(slug="filter-named", name="Mai Ati Mini Eatery")
+
+        request = RequestFactory().get("/admin/core/company/", {"needs_name": "yes"})
+        base_qs = self.admin.get_queryset(request)
+        filtered = UnnamedShopFilter(request, request.GET.copy(), Company, self.admin)
+        results = [c.pk for c in filtered.queryset(request, base_qs)]
+
+        self.assertIn(unnamed.pk, results)
+        self.assertNotIn(named.pk, results)

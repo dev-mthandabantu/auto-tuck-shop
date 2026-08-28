@@ -34,6 +34,19 @@ class NeedsAttentionFilter(admin.SimpleListFilter):
         )
 
 
+class UnnamedShopFilter(admin.SimpleListFilter):
+    title = "needs a name"
+    parameter_name = "needs_name"
+
+    def lookups(self, request, model_admin):
+        return (("yes", "Still \"Unnamed Shop\""),)
+
+    def queryset(self, request, queryset):
+        if self.value() != "yes":
+            return queryset
+        return queryset.filter(name="Unnamed Shop")
+
+
 @admin.register(Company)
 class CompanyAdmin(admin.ModelAdmin):
     list_display = [
@@ -45,9 +58,10 @@ class CompanyAdmin(admin.ModelAdmin):
         "last_inbound_message",
         "nudge_status",
         "needs_attention_flag",
+        "needs_name_flag",
         "created_at",
     ]
-    list_filter = ["active", NeedsAttentionFilter]
+    list_filter = ["active", NeedsAttentionFilter, UnnamedShopFilter]
     search_fields = ["name", "slug"]
     prepopulated_fields = {"slug": ("name",)}
 
@@ -124,6 +138,15 @@ class CompanyAdmin(admin.ModelAdmin):
 
     needs_attention_flag.boolean = True
     needs_attention_flag.short_description = f"Silent {NEEDS_ATTENTION_DAYS}+ days"
+
+    def needs_name_flag(self, obj):
+        """Shops approved without a name are permanently stuck on this literal
+        placeholder (apps.core.services.approve_waitlist_entry) unless someone
+        edits it here or the shop replies to the automated followup (#316)."""
+        return obj.name == "Unnamed Shop"
+
+    needs_name_flag.boolean = True
+    needs_name_flag.short_description = "Needs a name"
 
     def has_change_permission(self, request, obj=None):
         return request.user.is_superuser

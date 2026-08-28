@@ -1,4 +1,7 @@
 {
+    "company": {
+        "name_updated": "Ndazviwana — shop yenyu yaiswa se *{shop_name}*. Maita basa!"
+    },
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
         "btn_en": "English",
@@ -73,6 +76,7 @@
         "discovery_weekly_report": "Unoziva here kuti unogona kundibvunza *ndakaita mari ngapi svondo rino?* Edza.",
         "discovery_multi_item": "Unogona kurecorda zvakawanda mumessage imwe — semuenzaniso *3 Mazoe $1, 2 chingwa $0.50*",
         "discovery_photo_upload": "Wanyora zvawatengesa nhasi pabepa? Tumira foto tirecorde zvawanyora pabepa.",
+        "unnamed_shop_followup": "Mubvunzo mudiki — shop yenyu inonzi chii? Ingopindura nezita, ndozviisa. Semuenzaniso: *Mai Ati Mini Eatery*",
         "insight_best_day": "Zuva rakanakisa svondo rino raive {day} ne {currency}{total}. Chii chakashanduka pazuva iri?",
         "insight_daily_average": "Unoita {currency}{avg} zuva nezuva — une nzira yekusvika {currency}{projected} Svondo."
     },

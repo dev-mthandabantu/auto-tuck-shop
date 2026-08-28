@@ -131,6 +131,11 @@ def _set_profile_language(user_profile_id: int, language: str) -> None:
     UserProfile.objects.filter(id=user_profile_id).update(language=language)
 
 
+@db_sync_to_async
+def _set_company_name(company_id: int, name: str) -> None:
+    Company.objects.filter(id=company_id).update(name=name)
+
+
 async def _send_response(to: str, message: str, reply_to: str | None = None) -> None:
     client = get_whatsapp_client()
     await client.send_message(to, message, reply_to=reply_to)
@@ -507,6 +512,21 @@ async def _process_message_async(
 
         def _is_silent_greeting(candidate: str) -> bool:
             return bool(_SILENT_PATTERN.match(candidate) or _EMOJI_ONLY_PATTERN.match(candidate))
+
+        # Guards the unnamed-shop name-capture gate below (#316 review) — a
+        # digit alongside a currency indicator is almost certainly a sale
+        # attempt ("2 Mazoe $1 each"), not a shop name, and must not be
+        # captured as one. Deliberately a narrow heuristic, not a parser —
+        # matches the same "exclude, don't validate" shape the greeting gate
+        # above uses, not a full re-implementation of sale parsing.
+        _SALE_SHAPED_PATTERN = re.compile(
+            r"\$|\bUSD\b|\bZAR\b|\bZWG\b|\bZiG\b|\brand\b|\bdollars?\b|R\d",
+            re.IGNORECASE,
+        )
+
+        def _looks_like_sale_attempt(candidate: str) -> bool:
+            return bool(re.search(r"\d", candidate)) and bool(_SALE_SHAPED_PATTERN.search(candidate))
+
         _typing_sent = False
         if settings.ENABLE_WHATSAPP_TYPING and not _is_silent_greeting(text):
             try:
@@ -567,6 +587,24 @@ async def _process_message_async(
                     await _send_response(sender, t("closing.acknowledged", lang=lang))
                     return
                 # Otherwise fall through — they sent a sale or unrelated message during the closing window
+
+            # Intercept the reply to the unnamed-shop followup (#316) — only
+            # while still on the "Unnamed Shop" placeholder and we've already
+            # asked. A filler reply ("ok", "thanks") must not get captured as
+            # the shop's name — same _is_silent_greeting check already used
+            # above to gate the typing indicator / greeting silence. A
+            # sale-shaped reply ("2 Mazoe $1 each") must not get captured
+            # either — the very first message after the followup could
+            # legitimately be a sale, not an answer to the name question
+            # (review on PR #341: without this, that sale would silently
+            # become the shop's new name instead of being recorded).
+            if company.name == "Unnamed Shop" and company.unnamed_shop_followup_sent:
+                stripped = text.strip()
+                if stripped and not _is_silent_greeting(stripped) and not _looks_like_sale_attempt(stripped):
+                    await _set_company_name(company.id, stripped)
+                    await _send_response(sender, t("company.name_updated", lang=lang, shop_name=stripped))
+                    return
+                # Otherwise fall through — greeting/filler, sale-shaped, or empty; not a name attempt
 
         try:
             result = await parse_message_unified(text, company=company, message_id=message_id)

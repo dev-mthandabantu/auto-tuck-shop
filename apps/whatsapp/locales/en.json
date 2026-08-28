@@ -1,4 +1,7 @@
 {
+    "company": {
+        "name_updated": "Got it — your shop is now saved as *{shop_name}*. Thanks!"
+    },
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",
         "btn_en": "English",
@@ -73,6 +76,7 @@
         "discovery_weekly_report": "Did you know you can ask me *how much did I make this week?* Try it.",
         "discovery_multi_item": "You can record multiple items in one message — e.g. *3 Mazoe $1, 2 bread $0.50*",
         "discovery_photo_upload": "Kept a written record today? Just send us a photo and we'll capture the sales for you.",
+        "unnamed_shop_followup": "Quick question — what's your shop called? Just reply with the name and I'll update it, e.g. *Mai Ati Mini Eatery*",
         "insight_best_day": "Your best day this week was {day} with {currency}{total}. What made that day different?",
         "insight_daily_average": "You are averaging {currency}{avg}/day — on track for {currency}{projected} by Sunday."
     },
