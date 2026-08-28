@@ -59,8 +59,34 @@
         "btn_late": "After 8pm"
     },
     "sales_query": {
-        "no_sales": "Hapana zvakatengeswa musi wa {date}.",
+        "no_sales_today": "Hapana zvatengeswa musi wa {date}.",
+        "no_sales_past": "Hapana zvakatengeswa musi wa {date}.",
         "not_registered": "Sorry, account yako haisati yagadzirwa. Taura na administrator we shop yako."
+    },
+    "summary": {
+        "heading": "Zvaitika nezuva ra{date}",
+        "revenue_line": "Zvese pamwe: {revenue} kubva ku {sale_word}",
+        "sale_word": "{count} zvatengeswa",
+        "top_sellers": "Zvanyanya kutengwa:",
+        "top_seller_line": "  • {name}: {qty}",
+        "quiet_day_today": "Zuva rakanyarara — hapana zvatengeswa.",
+        "quiet_day_past": "Zuva rakanyarara — hapana zvakatengeswa.",
+        "good_day": "Waita zuva rakanaka!"
+    },
+    "report_card": {
+        "your_shop": "Shopu Yako",
+        "sales_this_week": "{count} zvatengeswa vhiki rino",
+        "best_day_this_week": "Zuva rakanakisa vhiki rino: {day}",
+        "today": "Nhasi",
+        "top_sellers": "Zvanyanya kutengwa",
+        "this_week": "Vhiki rino",
+        "day_mon": "M",
+        "day_tue": "T",
+        "day_wed": "W",
+        "day_thu": "Th",
+        "day_fri": "F",
+        "day_sat": "S",
+        "day_sun": "Su"
     },
     "nudge": {
         "opt_out_confirmed": "Zvakanaka — handichakutumiri ma reminder. Uchiri kukwanisa kundishandisa ku recorda zvawatengesa.",

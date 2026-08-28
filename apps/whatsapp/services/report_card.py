@@ -83,7 +83,9 @@ def _draw_bar_chart(
     h: int,
     font_tiny,
     font_small,
+    lang: str,
 ) -> None:
+    from apps.whatsapp.services.webhook_handler import t
     n_days = len(week_revenues)
     if n_days == 0:
         return
@@ -136,7 +138,7 @@ def _draw_bar_chart(
                 )
 
         # Day label centred under the whole group
-        label_text = "Today" if is_today else str((monday + datetime.timedelta(days=i)).day)
+        label_text = t("report_card.today", lang=lang) if is_today else str((monday + datetime.timedelta(days=i)).day)
         group_centre = group_x + group_w // 2
         lw = _tw(draw, label_text, font_tiny)
         label_color = WHITE if is_today else MUTED_COLOR
@@ -146,7 +148,12 @@ def _draw_bar_chart(
         )
 
 
-def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: str = "") -> bytes:
+def generate_stat_card(
+    snapshot: BusinessSnapshot, comparison: dict, shop_name: str = "", lang: str | None = None
+) -> bytes:
+    from apps.whatsapp.services.webhook_handler import t, DEFAULT_LANGUAGE
+
+    lang = lang or DEFAULT_LANGUAGE
     img = Image.new("RGB", (WIDTH, HEIGHT), color=BG_COLOR)
     draw = ImageDraw.Draw(img)
 
@@ -165,7 +172,7 @@ def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: 
 
     # Header
     date_label = snapshot.report_date.strftime("%d %b %Y")
-    display_name = (shop_name or "Your Shop").upper()
+    display_name = (shop_name or t("report_card.your_shop", lang=lang)).upper()
     header = f"{display_name}  |  {date_label}"
     draw.text((PADDING, y), header, font=font_small, fill=MUTED_COLOR)
     y += 38
@@ -201,7 +208,10 @@ def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: 
 
     # Sales count — weekly
     week_sales_count: int = comparison.get("week_sales_count", snapshot.sales_count)
-    sales_label = f"{week_sales_count} sale{'s' if week_sales_count != 1 else ''} this week"
+    sales_label = t(
+        "report_card.sales_this_week", lang=lang,
+        count=week_sales_count, plural="s" if week_sales_count != 1 else "",
+    )
     draw.text((PADDING, y), sales_label, font=font_small, fill=MUTED_COLOR)
     y += 36
 
@@ -209,8 +219,9 @@ def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: 
     week_revenues: list[dict] = comparison.get("week_revenues", [])
     prior_days_had_sales = any(sum(d.values(), Decimal("0")) > 0 for d in week_revenues[:-1])
     if comparison.get("is_best_day_this_week") and prior_days_had_sales:
-        best_day_label = comparison.get("best_day_label", "Today")
-        draw.text((PADDING, y), f"Best day this week: {best_day_label}", font=font_medium, fill=GOLD)
+        best_day_label = comparison.get("best_day_label") or t("report_card.today", lang=lang)
+        best_day_text = t("report_card.best_day_this_week", lang=lang, day=best_day_label)
+        draw.text((PADDING, y), best_day_text, font=font_medium, fill=GOLD)
         y += 40
 
     y += 8
@@ -220,7 +231,7 @@ def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: 
     # Top sellers
     top = [(name, qty) for name, qty in snapshot.top_products if qty >= TOP_SELLER_MIN_QTY]
     if top:
-        draw.text((PADDING, y), "Top sellers", font=font_small, fill=MUTED_COLOR)
+        draw.text((PADDING, y), t("report_card.top_sellers", lang=lang), font=font_small, fill=MUTED_COLOR)
         y += 28
         for pname, qty in top[:3]:
             draw.text((PADDING, y), pname, font=font_medium, fill=WHITE)
@@ -231,14 +242,14 @@ def generate_stat_card(snapshot: BusinessSnapshot, comparison: dict, shop_name: 
 
     # Right column: bar chart
     if week_revenues:
-        chart_label = "This week"
+        chart_label = t("report_card.this_week", lang=lang)
         draw.text((right_x, content_top), chart_label, font=font_small, fill=MUTED_COLOR)
         chart_top = content_top + 32
         chart_h = HEIGHT - chart_top - PADDING - 8
         _draw_bar_chart(
             draw, week_revenues, snapshot.report_date,
             right_x, chart_top, right_w, chart_h,
-            font_tiny, font_small,
+            font_tiny, font_small, lang,
         )
 
     # Footer

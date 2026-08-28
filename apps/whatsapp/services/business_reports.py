@@ -214,27 +214,38 @@ def _display_revenue(currency_revenues: dict[str, Decimal]) -> str:
     return " + ".join(format_price(amt, cur) for cur, amt in currency_revenues.items())
 
 
-def format_business_summary(snapshot: BusinessSnapshot) -> str:
+def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None) -> str:
     """Render a human-readable business summary message."""
-    date_label = snapshot.report_date.strftime("%d %b %Y")
-    sale_word = f"{snapshot.sales_count} sale{'s' if snapshot.sales_count != 1 else ''}"
-    lines = [f"Summary for {date_label}"]
+    from apps.whatsapp.services.webhook_handler import t, DEFAULT_LANGUAGE
 
-    lines.append(f"Revenue: {_display_revenue(snapshot.currency_revenues)} from {sale_word}")
+    lang = lang or DEFAULT_LANGUAGE
+    date_label = snapshot.report_date.strftime("%d %b %Y")
+    sale_word = t(
+        "summary.sale_word", lang=lang,
+        count=snapshot.sales_count, plural="s" if snapshot.sales_count != 1 else "",
+    )
+    lines = [t("summary.heading", lang=lang, date=date_label)]
+
+    lines.append(t(
+        "summary.revenue_line", lang=lang,
+        revenue=_display_revenue(snapshot.currency_revenues), sale_word=sale_word,
+    ))
 
     if snapshot.top_products:
         lines.append("")
-        lines.append("Top sellers:")
+        lines.append(t("summary.top_sellers", lang=lang))
         for name, qty in snapshot.top_products[:3]:
-            lines.append(f"  • {name}: {qty}")
+            lines.append(t("summary.top_seller_line", lang=lang, name=name, qty=qty))
 
     # Closing line based on revenue
     if snapshot.revenue == 0:
         lines.append("")
-        lines.append("Quiet day — no sales recorded.")
+        is_today = snapshot.report_date == timezone.localdate()
+        quiet_day_key = "summary.quiet_day_today" if is_today else "summary.quiet_day_past"
+        lines.append(t(quiet_day_key, lang=lang))
     elif snapshot.sales_count >= 10:
         lines.append("")
-        lines.append("Good day!")
+        lines.append(t("summary.good_day", lang=lang))
 
     return "\n".join(lines)
 
@@ -433,11 +444,12 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
         return []
 
     comparison = await sync_to_async(build_comparison_context, thread_sensitive=True)(company, report_date)
-    text_summary = format_business_summary(snapshot)
+    lang = await sync_to_async(_company_owner_lang, thread_sensitive=True)(company)
+    text_summary = format_business_summary(snapshot, lang=lang)
 
     try:
         from apps.whatsapp.services.report_card import generate_stat_card
-        image_bytes = generate_stat_card(snapshot, comparison, shop_name=company.name)
+        image_bytes = generate_stat_card(snapshot, comparison, shop_name=company.name, lang=lang)
         image_url = await sync_to_async(upload_report_image, thread_sensitive=True)(
             image_bytes, company.id, report_date
         )
@@ -474,7 +486,6 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
                 {"type": "text", "text": str(snapshot.sales_count)},
                 {"type": "text", "text": top_seller},
             ]}]
-            lang = await sync_to_async(_company_owner_lang, thread_sensitive=True)(company)
             template_name = _template_name_for_lang("ats_daily_summary", lang)
             await wa_client.send_template_message(phone, template_name, components=components)
         elif image_url:

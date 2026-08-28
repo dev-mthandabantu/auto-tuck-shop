@@ -59,8 +59,34 @@
         "btn_late": "After 8pm"
     },
     "sales_query": {
-        "no_sales": "No sales recorded for {date}.",
+        "no_sales_today": "No sales recorded for {date}.",
+        "no_sales_past": "No sales recorded for {date}.",
         "not_registered": "Sorry, your account is not set up yet. Please contact your shop administrator."
+    },
+    "summary": {
+        "heading": "Summary for {date}",
+        "revenue_line": "Revenue: {revenue} from {sale_word}",
+        "sale_word": "{count} sale{plural}",
+        "top_sellers": "Top sellers:",
+        "top_seller_line": "  • {name}: {qty}",
+        "quiet_day_today": "Quiet day — no sales recorded.",
+        "quiet_day_past": "Quiet day — no sales recorded.",
+        "good_day": "Good day!"
+    },
+    "report_card": {
+        "your_shop": "Your Shop",
+        "sales_this_week": "{count} sale{plural} this week",
+        "best_day_this_week": "Best day this week: {day}",
+        "today": "Today",
+        "top_sellers": "Top sellers",
+        "this_week": "This week",
+        "day_mon": "Mon",
+        "day_tue": "Tue",
+        "day_wed": "Wed",
+        "day_thu": "Thu",
+        "day_fri": "Fri",
+        "day_sat": "Sat",
+        "day_sun": "Sun"
     },
     "nudge": {
         "opt_out_confirmed": "Got it — I will not send you reminders anymore. You can still use me to record sales anytime.",

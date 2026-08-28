@@ -440,15 +440,16 @@ async def _handle_sales_query(
 
     if snapshot.sales_count == 0:
         date_label = report_date.strftime("%d %b %Y")
-        await _send_response(sender, t("sales_query.no_sales", lang=lang, date=date_label))
+        no_sales_key = "sales_query.no_sales_today" if report_date == today else "sales_query.no_sales_past"
+        await _send_response(sender, t(no_sales_key, lang=lang, date=date_label))
         return
 
     comparison = await _s2a(build_comparison_context, thread_sensitive=True)(company, report_date)
-    text_summary = format_business_summary(snapshot)
+    text_summary = format_business_summary(snapshot, lang=lang)
 
     image_url = None
     try:
-        image_bytes = generate_stat_card(snapshot, comparison, shop_name=company.name)
+        image_bytes = generate_stat_card(snapshot, comparison, shop_name=company.name, lang=lang)
         image_url = await _s2a(upload_report_image, thread_sensitive=True)(
             image_bytes, company.id, report_date
         )

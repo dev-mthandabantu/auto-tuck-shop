@@ -674,7 +674,6 @@ class MockWhatsApp {
         const el = document.createElement('div');
         el.className = 'message received has-tail image-bubble';
         const captionHTML = caption ? `<div class="image-caption">${this._formatWA(caption)}</div>` : '';
-        // Show placeholder with caption — real WhatsApp images require auth so we can't embed R2 URLs directly
         el.innerHTML = `
             <div class="bubble">
                 <div class="image-placeholder">
@@ -684,6 +683,17 @@ class MockWhatsApp {
                 ${captionHTML}
                 <span class="message-meta"><span class="timestamp">${this._time()}</span></span>
             </div>`;
+        // R2's public URL serves objects unauthenticated (unlike real WhatsApp media, which
+        // requires Meta's authenticated download flow), so we can embed it directly here.
+        // Fall back to the placeholder box if the URL is missing or fails to load (e.g. R2 not configured locally).
+        if (imageUrl) {
+            const placeholder = el.querySelector('.image-placeholder');
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = 'Report image';
+            img.onerror = () => img.replaceWith(placeholder);
+            placeholder.replaceWith(img);
+        }
         this.$messages.appendChild(el);
         this._scroll();
     }

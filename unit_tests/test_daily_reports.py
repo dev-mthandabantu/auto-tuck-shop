@@ -67,7 +67,7 @@ class FormatBusinessSummaryTest(TestCase):
             sales_count=0,
             currency_revenues={},
         )
-        result = format_business_summary(snapshot)
+        result = format_business_summary(snapshot, lang="en")
         self.assertIn("Quiet day", result)
 
 
