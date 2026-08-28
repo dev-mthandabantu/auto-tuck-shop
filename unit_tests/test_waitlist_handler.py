@@ -9,6 +9,7 @@ from django.test import TransactionTestCase
 from apps.core.models import WaitlistEntry
 from apps.whatsapp.services.waitlist_handler import (
     _send_waitlist_admin_notification,
+    process_language_button_async,
     process_new_waitlist_entry_async,
     process_waitlisted_message_async,
 )
@@ -47,6 +48,30 @@ class ProcessNewWaitlistEntryAcknowledgmentTest(TransactionTestCase):
 
         _run(_run_test())
         send_response_mock.assert_not_called()
+
+
+class ProcessLanguageButtonConsentTest(TransactionTestCase):
+    """Regression for #338 — waitlist.welcome (sent right after language
+    selection, the earliest point in the flow, before any proactive message
+    could ever go out) must include an active opt-in confirmation, not just
+    the operational "we'll review your request" copy. Per Brighton's #338
+    review: Meta's opt-in requirement isn't "outside WhatsApp only" — an
+    active in-conversation confirmation is a valid pattern, our gap was
+    having no active confirmation step at all."""
+
+    def test_waitlist_welcome_includes_opt_in_language(self):
+        entry = WaitlistEntry.objects.create(phone_number="+263771000600", language="en")
+        send_response_mock = AsyncMock()
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler._send_response", new=send_response_mock):
+                await process_language_button_async("en", entry.id, "+263771000600")
+
+        _run(_run_test())
+        # language.confirmed, then waitlist.welcome
+        self.assertEqual(send_response_mock.call_count, 2)
+        welcome_text = send_response_mock.call_args_list[1][0][1]
+        self.assertIn("agree to receive messages", welcome_text)
+        self.assertIn("stop", welcome_text.lower())
 
     def test_does_not_double_prompt_duplicate_message(self):
         WaitlistEntry.objects.create(phone_number="+263771000502", first_message="hello")

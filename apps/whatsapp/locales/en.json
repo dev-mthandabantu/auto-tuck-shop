@@ -11,7 +11,7 @@
         "switch_unclear": "Sorry, I did not catch which language you want. Reply with 'switch to English' or 'switch to Shona'."
     },
     "waitlist": {
-        "welcome": "You have been added to our waitlist.\n\nAn administrator will review your request and approve your account shortly. We will send you a message when you are approved.\n\nIn the meantime, please send another message with your shop name.",
+        "welcome": "You have been added to our waitlist.\n\nAn administrator will review your request and approve your account shortly. We will send you a message when you are approved.\n\nBy continuing, you agree to receive messages from Auto Tuck Shop, including occasional reminders if you haven't recorded sales in a while. Reply stop anytime to opt out.\n\nIn the meantime, please send another message with your shop name.",
         "first_message_noted": "We saved your message. Once your account is approved, please send it again (or we'll help you record it then).",
         "shop_name_noted": "Thank you! We have noted your shop name as \"{shop_name}\".\n\nYou are still on our waitlist. An administrator will review your request soon.",
         "greeting_prompt_shop_name": "Thanks! What is your shop called?",
