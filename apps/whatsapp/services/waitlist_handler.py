@@ -263,8 +263,10 @@ async def process_waitlist_button_action_async(
         await _send_response(sender, t("waitlist_admin.approved", phone=entry.phone_number, company=company.name))
         if settings.USE_TEMPLATE_MESSAGES:
             from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            from apps.whatsapp.services.nudge_service import _template_name_for_lang
             components = [{"type": "body", "parameters": [{"type": "text", "text": company.name}]}]
-            await get_whatsapp_client().send_template_message(entry.phone_number, "ats_approval_welcome", components=components)
+            template_name = _template_name_for_lang("ats_approval_welcome", lang)
+            await get_whatsapp_client().send_template_message(entry.phone_number, template_name, components=components)
         else:
             await _send_response(entry.phone_number, t("approval.welcome", lang=lang, company=company.name))
     else:
@@ -290,9 +292,11 @@ async def handle_add_assistant(sender: str, text: str, user_profile, result) -> 
     if settings.USE_TEMPLATE_MESSAGES:
         try:
             from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+            from apps.whatsapp.services.nudge_service import _template_name_for_lang
             components = [{"type": "body", "parameters": [{"type": "text", "text": user_profile.company.name}]}]
+            template_name = _template_name_for_lang("ats_assistant_welcome", lang)
             sent = await get_whatsapp_client().send_template_message(
-                phone_number, "ats_assistant_welcome", components=components
+                phone_number, template_name, components=components
             )
             if sent:
                 return

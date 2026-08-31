@@ -265,6 +265,31 @@ class ApprovalWelcomeTemplateTest(TransactionTestCase):
             components=[{"type": "body", "parameters": [{"type": "text", "text": "New Shop Approved"}]}],
         )
 
+    def test_sends_shona_named_template_for_shona_owner(self):
+        """Regression for #235: lang was computed but never passed to the
+        template call, so Shona owners always got the English template name."""
+        self.waitlist_entry.language = "sn"
+        self.waitlist_entry.save(update_fields=["language"])
+        send_template_mock = AsyncMock(return_value=True)
+        approved_company = self.approved_company
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.waitlist_handler._get_and_update_waitlist_entry", new=AsyncMock(return_value=self.waitlist_entry)), \
+                 patch("apps.whatsapp.services.waitlist_handler._approve_waitlist_entry", new=AsyncMock(return_value=(approved_company, None))), \
+                 patch("apps.whatsapp.services.waitlist_handler._send_response", new=AsyncMock()), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.waitlist_handler import process_waitlist_button_action_async
+                await process_waitlist_button_action_async("approve", "+263770000001", original_message_sid="sid_abc")
+
+        _run(_run_test())
+        send_template_mock.assert_called_once_with(
+            "+263771002002",
+            "ats_approval_welcome_shona_version",
+            components=[{"type": "body", "parameters": [{"type": "text", "text": "New Shop Approved"}]}],
+        )
+
     def test_sends_free_form_on_approve_when_flag_disabled(self):
         send_response_mock = AsyncMock()
         send_template_mock = AsyncMock(return_value=True)
@@ -322,6 +347,29 @@ class AssistantWelcomeTemplateTest(TransactionTestCase):
             [{"type": "body", "parameters": [{"type": "text", "text": "Assistant Shop"}]}],
         )
         self.assertEqual(send_response_mock.call_count, 1)
+
+    def test_sends_shona_named_template_when_owner_language_is_shona(self):
+        """Regression for #235: lang (the owner's language) was computed but
+        never passed to the template call."""
+        self.owner.language = "sn"
+        self.owner.save(update_fields=["language"])
+        send_response_mock = AsyncMock()
+        send_template_mock = AsyncMock(return_value=True)
+
+        async def _run_test():
+            with patch("apps.whatsapp.services.waitlist_handler.settings") as mock_settings, \
+                 patch("apps.whatsapp.services.waitlist_handler._get_profile_by_phone", new=AsyncMock(return_value=None)), \
+                 patch("apps.whatsapp.services.waitlist_handler._create_assistant", new=AsyncMock()), \
+                 patch("apps.whatsapp.services.waitlist_handler._send_response", new=send_response_mock), \
+                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=_mock_client(send_template_mock=send_template_mock)):
+                mock_settings.USE_TEMPLATE_MESSAGES = True
+                from apps.whatsapp.services.waitlist_handler import handle_add_assistant
+                parsed_result = SimpleNamespace(phone_number="+263771004004")
+                await handle_add_assistant("+263771003003", "add assistant +263771004004", self.owner, parsed_result)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        self.assertEqual(send_template_mock.call_args[0][1], "ats_assistant_welcome_shona_version")
 
     def test_sends_localized_fallback_to_assistant_when_templates_disabled(self):
         send_response_mock = AsyncMock()

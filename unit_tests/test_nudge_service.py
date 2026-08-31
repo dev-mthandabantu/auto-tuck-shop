@@ -78,6 +78,16 @@ class TemplateNameForLangTest(TestCase):
         for base_name, shona_name in expected.items():
             self.assertEqual(_template_name_for_lang(base_name, "sn"), shona_name)
 
+    def test_approval_and_assistant_welcome_map_correctly(self):
+        """Regression for #235's second gap: waitlist approval and assistant-add
+        welcomes were computing lang but never passing it to the template call."""
+        expected = {
+            "ats_approval_welcome": "ats_approval_welcome_shona_version",
+            "ats_assistant_welcome": "ats_assistant_welcome_shona_version",
+        }
+        for base_name, shona_name in expected.items():
+            self.assertEqual(_template_name_for_lang(base_name, "sn"), shona_name)
+
 
 class StreakCalculationTest(TransactionTestCase):
 

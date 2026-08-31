@@ -38,6 +38,8 @@ _SHONA_TEMPLATE_NAMES = {
     # to Meta — see #316. Code/copy ready now, template submission is a
     # separate fast-follow, same pattern as #251's newer CTAs.
     "ats_unnamed_shop_followup": "ats_unnamed_shop_followup_shona_version",
+    "ats_approval_welcome": "ats_approval_welcome_shona_version",
+    "ats_assistant_welcome": "ats_assistant_welcome_shona_version",
 }
 
 # Maps pick_nudge_cta's cta_key to the Meta template submitted for it (#251).
