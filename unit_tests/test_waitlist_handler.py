@@ -2,9 +2,11 @@
 greeting-as-company-name rejection (#256)."""
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 from django.test import TransactionTestCase
+from django.utils import timezone
 
 from apps.core.models import WaitlistEntry
 from apps.whatsapp.services.waitlist_handler import (
@@ -180,3 +182,40 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
 
         _run(_run_test())
         send_template_mock.assert_not_called()
+
+    def test_unhandled_send_exception_does_not_propagate(self):
+        """Regression for #339 — entry #30 sat pending for 29 days with zero
+        trace of any notification attempt. Root cause: an exception raised by
+        the WhatsApp client (not just a graceful None return) had no handling
+        anywhere in the call chain below the outer catch-all in
+        handle_language_button_action/handle_waitlisted_message — by the time
+        it's caught there, the shop owner already has their own confirmation
+        message, so nothing looks wrong to them and the only trace is a
+        single unmonitored Sentry log line. _send_waitlist_admin_notification
+        must swallow this itself so callers never need to guess whether it's
+        safe to call unguarded."""
+
+        async def _run_test():
+            with patch(
+                "apps.whatsapp.services.waitlist_handler._send_response_with_buttons",
+                new=AsyncMock(side_effect=ConnectionError("simulated network failure")),
+            ):
+                await _send_waitlist_admin_notification(self.entry)
+
+        _run(_run_test())  # must not raise
+
+    def test_stale_pending_flag_reflects_send_failure(self):
+        from apps.core.admin import WaitlistEntryAdmin
+        from django.contrib import admin as django_admin
+
+        self.entry.created_at = timezone.now() - timedelta(days=4)
+        self.entry.save(update_fields=["created_at"])
+        admin_instance = WaitlistEntryAdmin(WaitlistEntry, django_admin.site)
+        self.assertTrue(admin_instance.stale_pending_flag(self.entry))
+
+    def test_stale_pending_flag_false_for_recent_entry(self):
+        from apps.core.admin import WaitlistEntryAdmin
+        from django.contrib import admin as django_admin
+
+        admin_instance = WaitlistEntryAdmin(WaitlistEntry, django_admin.site)
+        self.assertFalse(admin_instance.stale_pending_flag(self.entry))

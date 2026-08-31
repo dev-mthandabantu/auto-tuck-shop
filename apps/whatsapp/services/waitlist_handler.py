@@ -155,6 +155,24 @@ def _deactivate_assistant(user_profile_id: int) -> None:
 
 
 async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
+    # Never let a failure here propagate silently (#339) — by the time this
+    # runs, the shop owner has already received their own confirmation
+    # message, so an unhandled exception would leave the entry stuck pending
+    # with no visible symptom anywhere except a single Sentry log line. The
+    # stale-pending admin flag (WaitlistEntryAdmin) is the backstop that
+    # surfaces it even if this log is never noticed.
+    try:
+        await _send_waitlist_admin_notification_unsafe(entry)
+    except Exception:
+        logger.exception(
+            "Admin waitlist notification failed entirely for entry %s (%s) — "
+            "entry will show as stale-pending in admin until manually processed",
+            entry.id,
+            entry.phone_number,
+        )
+
+
+async def _send_waitlist_admin_notification_unsafe(entry: WaitlistEntry) -> None:
     message = t(
         "waitlist_admin.new_request",
         phone=entry.phone_number,
