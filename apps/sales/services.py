@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from decimal import Decimal
 from typing import TYPE_CHECKING, TypedDict
 
+import emoji
 from django.db import transaction
 from django.utils import timezone
 
@@ -40,10 +42,73 @@ class ParsedSaleItem(TypedDict, total=False):
     price_ambiguous: bool | None
 
 
+class UnmatchedItem(TypedDict):
+    product_name: str
+    quantity: int
+
+
 class SaleCreationResult(TypedDict):
     sale: Sale | None
-    unmatched_items: list[str]
+    unmatched_items: list[UnmatchedItem]
     ambiguous_items: list[str]
+
+
+# Matches a trailing/leading " emoji" (or "emoji ") word the LLM sometimes
+# appends/prepends to an otherwise-plain name, e.g. "house emoji" -> "house".
+_EMOJI_SUFFIX_RE = re.compile(r"^\s*emoji\s+|\s+emoji\s*$", re.IGNORECASE)
+
+# English words the LLM uses in place of an emoji, mapped to that emoji's
+# demojized canonical name (see canonicalize_product_name's own emoji.demojize
+# call) — #356's repro had the LLM return raw "🚗" on one call and "car" on
+# another for the same sale. Without this map those two calls create two
+# separate Product rows (split price/report history) because "car" is plain
+# text and skips the emoji branch entirely. Keyed on the lowercased, "emoji"
+# suffix-stripped name; only covers the pilot's demo emoji plus common
+# synonyms actually seen from the LLM — extend as new mismatches surface.
+_TEXT_TO_EMOJI_CANONICAL = {
+    "car": "automobile",
+    "automobile": "automobile",
+    "house": "house",
+    "home": "house",
+    "banana": "banana",
+}
+
+
+def canonicalize_product_name(name: str) -> str:
+    """Resolve an emoji-derived product name to a stable, deterministic label.
+
+    The LLM has no canonicalization step of its own, so the same product can
+    come back as a raw emoji character, that emoji's English word, or the
+    word suffixed with "emoji" — on different calls for the same sale (see
+    #356). Two sales of the same real product should always match to the
+    same Product row, so this collapses all three forms to one canonical
+    name before it ever reaches find_product_by_name / Product.objects.create.
+
+    Emoji-only strings (once the "emoji" suffix is stripped) are demojized.
+    Plain text is then checked against a known word->emoji-canonical map so
+    it converges with its emoji counterpart; anything else is left as typed.
+    """
+    stripped = _EMOJI_SUFFIX_RE.sub("", name).strip()
+    if not stripped:
+        return name
+
+    matches = emoji.emoji_list(stripped)
+    matched_chars = sum(m["match_end"] - m["match_start"] for m in matches)
+    if matched_chars != len(stripped):
+        # Not composed entirely of emoji characters. Map known English words
+        # for the pilot's demo emoji onto the same canonical name so they
+        # converge with the raw-emoji path; anything else is left as-is
+        # (after the "emoji" suffix strip, which is safe for plain text too).
+        return _TEXT_TO_EMOJI_CANONICAL.get(stripped.lower(), stripped)
+
+    seen: set[str] = set()
+    names: list[str] = []
+    for m in matches:
+        canonical = emoji.demojize(m["emoji"]).strip(":").replace("_", " ")
+        if canonical not in seen:
+            seen.add(canonical)
+            names.append(canonical)
+    return " ".join(names)
 
 
 def find_product_by_name(name: str, company: Company) -> Product | None:
@@ -69,7 +134,7 @@ def create_sale_from_parsed_items(
         company: The company this sale belongs to
         currency: The detected currency from the message
 
-    Returns the created sale and a list of unmatched product names.
+    Returns the created sale and a list of unmatched items (name + quantity).
     """
     # Validate prices before touching the database (ignore ambiguous items
     # which have had their unit_price cleared by the parser)
@@ -87,11 +152,12 @@ def create_sale_from_parsed_items(
             )
 
     sale: Sale | None = None
-    unmatched_items: list[str] = []
+    unmatched_items: list[UnmatchedItem] = []
     ambiguous_items: list[str] = []
     detected_currency = currency or "USD"
 
     for item in items:
+        item["product_name"] = canonicalize_product_name(item["product_name"])
         product = find_product_by_name(item["product_name"], company=company)
 
         # Determine price and currency
@@ -119,7 +185,10 @@ def create_sale_from_parsed_items(
                 ambiguous_items.append(item["product_name"])
                 continue
             else:
-                unmatched_items.append(item["product_name"])
+                unmatched_items.append({
+                    "product_name": item["product_name"],
+                    "quantity": item["quantity"],
+                })
                 continue
 
         if not product:

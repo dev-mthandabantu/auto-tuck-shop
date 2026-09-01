@@ -7,7 +7,7 @@ from django.test import TestCase
 from apps.catalog.models import Product, ProductPrice
 from apps.core.models import Company
 from apps.sales.models import Sale
-from apps.sales.services import create_sale_from_parsed_items
+from apps.sales.services import canonicalize_product_name, create_sale_from_parsed_items
 from apps.whatsapp.services.message_parser import _apply_rule_based_price_hints
 
 
@@ -96,7 +96,7 @@ class CreateSaleFromParsedItemsTest(TestCase):
 
         self.assertIsNotNone(result["sale"])
         self.assertEqual(result["ambiguous_items"], ["Chisp"])
-        self.assertEqual(result["unmatched_items"], ["Unknown"])
+        self.assertEqual(result["unmatched_items"], [{"product_name": "Unknown", "quantity": 1}])
         self.assertEqual(result["sale"].items.count(), 1)
         self.assertTrue(Product.objects.filter(name="Bread", company=self.company).exists())
         self.assertFalse(Product.objects.filter(name="Chisp", company=self.company).exists())
@@ -124,9 +124,125 @@ class CreateSaleFromParsedItemsTest(TestCase):
 
         self.assertIsNone(result["sale"])
         self.assertEqual(result["ambiguous_items"], ["Chisp"])
-        self.assertEqual(result["unmatched_items"], ["Unknown"])
+        self.assertEqual(result["unmatched_items"], [{"product_name": "Unknown", "quantity": 1}])
         self.assertEqual(Sale.objects.count(), 0)
         self.assertEqual(Product.objects.count(), 0)
+
+    def test_unmatched_item_carries_quantity_not_just_name(self):
+        """Regression for #356: the Unmatched message needs the quantity the
+        bot understood ("Got 3 x Chips...") — it was previously dropped
+        between this function and the response builder in sale_handler.py."""
+        result = create_sale_from_parsed_items(
+            items=[{"product_name": "Chips", "quantity": 3, "unit_price": None, "currency": None}],
+            company=self.company,
+        )
+
+        self.assertEqual(result["unmatched_items"], [{"product_name": "Chips", "quantity": 3}])
+
+    def test_emoji_product_name_canonicalized_before_matching(self):
+        """Regression for #356: two calls that both mean the same emoji
+        product must resolve to the same Product, even if one call returns
+        the raw emoji and the other returns repeated emoji characters."""
+        result_a = create_sale_from_parsed_items(
+            items=[{"product_name": "🚗", "quantity": 1, "unit_price": Decimal("5.00"), "currency": "USD"}],
+            company=self.company,
+        )
+        result_b = create_sale_from_parsed_items(
+            items=[{"product_name": "🚗🚗🚗", "quantity": 1, "unit_price": Decimal("5.00"), "currency": "USD"}],
+            company=self.company,
+        )
+
+        product_a = result_a["sale"].items.get().product
+        product_b = result_b["sale"].items.get().product
+        self.assertEqual(product_a, product_b)
+        self.assertEqual(product_a.name, "automobile")
+
+    def test_emoji_and_text_product_name_resolve_to_same_product(self):
+        """Regression for #356's actual repro: the LLM returned raw "🚗" on
+        one call and the plain text "car" on another, for the same sale —
+        those must land on the same Product row or price/report history for
+        that product silently splits in two."""
+        result_a = create_sale_from_parsed_items(
+            items=[{"product_name": "🚗", "quantity": 1, "unit_price": Decimal("5.00"), "currency": "USD"}],
+            company=self.company,
+        )
+        result_b = create_sale_from_parsed_items(
+            items=[{"product_name": "car", "quantity": 1, "unit_price": Decimal("5.00"), "currency": "USD"}],
+            company=self.company,
+        )
+        result_c = create_sale_from_parsed_items(
+            items=[{"product_name": "car emoji", "quantity": 1, "unit_price": Decimal("5.00"), "currency": "USD"}],
+            company=self.company,
+        )
+
+        product_a = result_a["sale"].items.get().product
+        product_b = result_b["sale"].items.get().product
+        product_c = result_c["sale"].items.get().product
+        self.assertEqual(product_a, product_b)
+        self.assertEqual(product_a, product_c)
+        self.assertEqual(product_a.name, "automobile")
+        self.assertEqual(Product.objects.count(), 1)
+
+
+class CanonicalizeProductNameTest(TestCase):
+    """Direct tests for canonicalize_product_name — no LLM or DB needed."""
+
+    def test_raw_emoji_resolves_to_canonical_name(self):
+        self.assertEqual(canonicalize_product_name("🚗"), "automobile")
+        self.assertEqual(canonicalize_product_name("🏠"), "house")
+        self.assertEqual(canonicalize_product_name("🍌"), "banana")
+
+    def test_repeated_emoji_collapses_to_single_name(self):
+        self.assertEqual(canonicalize_product_name("🚗🚗🚗"), "automobile")
+        self.assertEqual(canonicalize_product_name("🏠🏠🏠"), "house")
+
+    def test_text_with_emoji_suffix_strips_to_plain_word(self):
+        self.assertEqual(canonicalize_product_name("house emoji"), "house")
+        self.assertEqual(canonicalize_product_name("emoji house"), "house")
+
+    def test_mapped_word_with_emoji_suffix_also_resolves_to_canonical(self):
+        """"Car Emoji" strips to "Car" via _EMOJI_SUFFIX_RE, then "Car"
+        (lowercased) hits _TEXT_TO_EMOJI_CANONICAL, same as bare "car"."""
+        self.assertEqual(canonicalize_product_name("Car Emoji"), "automobile")
+
+    def test_emoji_variants_for_same_emoji_converge(self):
+        """The exact inconsistency from #356's repro: same real-world
+        product, different LLM outputs across calls — raw emoji, that
+        emoji's English word, and the word suffixed with "emoji" — must all
+        canonicalize to the same name, or the sale/report history for one
+        product silently splits across two Product rows."""
+        emoji_variants = {"🚗", "🚗 emoji", "car", "car emoji", "Car Emoji"}
+        canonicalized = {canonicalize_product_name(v) for v in emoji_variants}
+        self.assertEqual(canonicalized, {"automobile"})
+
+    def test_plain_text_name_is_left_unchanged(self):
+        self.assertEqual(canonicalize_product_name("Mazoe"), "Mazoe")
+        self.assertEqual(canonicalize_product_name("bread"), "bread")
+        self.assertEqual(canonicalize_product_name("plates beef"), "plates beef")
+
+    def test_mapped_text_synonyms_converge_with_their_emoji(self):
+        """Words the LLM uses interchangeably with an emoji (not just the
+        exact word the emoji demojizes to) must also converge, e.g. "home"
+        for the house emoji."""
+        self.assertEqual(canonicalize_product_name("home"), "house")
+        self.assertEqual(canonicalize_product_name("Home"), "house")
+        self.assertEqual(canonicalize_product_name("house"), "house")
+        self.assertEqual(canonicalize_product_name("🏠"), "house")
+
+    def test_mixed_text_and_emoji_left_unchanged(self):
+        """Only strings composed entirely of emoji (after the 'emoji' suffix
+        strip) are canonicalized — a name that mixes real text and an emoji
+        character is ambiguous and left as the LLM produced it."""
+        self.assertEqual(canonicalize_product_name("🚗 car"), "🚗 car")
+
+    def test_empty_string_returned_unchanged(self):
+        self.assertEqual(canonicalize_product_name(""), "")
+
+    def test_reactive_emoji_still_canonicalizes(self):
+        """Not just the pilot's demo emoji (house/car/banana) — any emoji
+        composed string should canonicalize, since the LLM can return any of
+        the full Unicode emoji set as a product_name."""
+        self.assertEqual(canonicalize_product_name("👍"), "thumbs up")
 
 
 class PriceHintsTest(TestCase):

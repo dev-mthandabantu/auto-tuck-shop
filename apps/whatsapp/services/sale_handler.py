@@ -215,7 +215,16 @@ async def process_sale_message_unified(
 
     has_sale_items = bool(sale_items)
     if unmatched:
-        response_lines.append(t("sale.unmatched", lang=lang, items=", ".join(unmatched)))
+        example_currency = (company.currency if company else None) or "USD"
+        example_price = format_price(5, example_currency)
+        for unmatched_item in unmatched:
+            response_lines.append(t(
+                "sale.unmatched", lang=lang,
+                quantity=unmatched_item["quantity"],
+                product=unmatched_item["product_name"],
+                example=f"{unmatched_item['quantity']} {unmatched_item['product_name']} "
+                        f"{example_price} each",
+            ))
 
     if ambiguous:
         if has_sale_items:

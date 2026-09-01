@@ -12,6 +12,8 @@ Examples:
 
 Supported currencies: USD ($), ZAR (R), ZWG / ZiG, BWP (P), EUR (euro), GBP (pound). Mixed currencies within one message are supported.
 
+**Emoji product names:** the LLM has no canonicalization step of its own, so the same emoji could previously resolve to a different `product_name` string across calls (e.g. a raw 🚗 on one call, `"car"` on another) — breaking product identity for reporting and price history (#356). `apps/sales/services.py::canonicalize_product_name` runs after the LLM call, before the name ever reaches product matching: any product name composed entirely of emoji characters (after stripping a stray `"emoji"` word the LLM sometimes appends) is resolved to a stable label via the `emoji` package (e.g. 🚗 → `automobile`), so two sales of the same emoji always match the same `Product` row. A normal text name is left untouched.
+
 ## Sale Confirmation
 
 After parsing, the bot sends a summary with two buttons:
@@ -19,6 +21,8 @@ After parsing, the bot sends a summary with two buttons:
 - **Fix mistake** — cancels the sale, flags it as a bot mistake for metrics
 
 Sales remain `pending` until confirmed. Cancellations are tracked separately from confirmed sales.
+
+**Unmatched items:** if an item has no price and no stored catalog price to fall back on, it's excluded from the sale and the bot tells the owner what was understood and what to send next — e.g. "Got 3 x car, but I don't know the price. Reply with e.g. '3 car $5 each'" — using the shop's own currency in the example (#356).
 
 ## Voice Messages
 

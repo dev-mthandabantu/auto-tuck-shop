@@ -10,3 +10,4 @@ boto3>=1.34
 tenacity>=8.2
 sentry-sdk>=2.0
 pillow>=10.0
+emoji>=2.14
