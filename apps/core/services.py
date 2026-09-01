@@ -4,13 +4,22 @@ These are plain synchronous functions that can be called from both
 the Django admin (sync) and the webhook handler (via sync_to_async).
 """
 
+from datetime import timedelta
+
 from django.contrib.auth.models import User
 from django.db import IntegrityError
 from django.utils import timezone
 from django.utils.text import slugify
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
+from apps.core.pilot_test_phones import PILOT_TEST_PHONES
+from apps.sales.models import Sale
 from apps.whatsapp.models import WhatsAppMessage
+
+# How many days without a single confirmed sale, across all real (non-test)
+# pilot shops, before the pilot is considered "gone dark". Matches the
+# threshold proposed in #273.
+PILOT_SILENCE_WINDOW_DAYS = 7
 
 
 class PhoneNumberAlreadyRegisteredError(ValueError):
@@ -123,3 +132,24 @@ def approve_waitlist_entry(
         company.save(update_fields=["first_message_date"])
 
     return company, profile
+
+
+def count_active_pilot_shops(days: int = PILOT_SILENCE_WINDOW_DAYS) -> int:
+    """Count real (non-test) pilot shops with at least one confirmed sale
+    in the last `days` days. Used to detect the pilot going silent — see #273."""
+    since = timezone.now() - timedelta(days=days)
+    test_owner_ids = UserProfile.objects.filter(
+        role=UserProfile.Role.OWNER, phone_number__in=PILOT_TEST_PHONES
+    ).values_list("company_id", flat=True)
+
+    return (
+        Sale.objects.filter(
+            status=Sale.Status.CONFIRMED,
+            sale_timestamp__gte=since,
+            company__active=True,
+        )
+        .exclude(company_id__in=test_owner_ids)
+        .values("company_id")
+        .distinct()
+        .count()
+    )

@@ -1,3 +1,5 @@
 */15 * * * * python /code/manage.py send_daily_reports
 */15 * * * * python /code/manage.py send_nudges
+# 06:00 UTC = 08:00 Africa/Harare (no TZ set on this container — see command for detail)
+0 6 * * * python /code/manage.py pilot_activity_alert
 */15 * * * * python /code/manage.py auto_cancel_stale_sales

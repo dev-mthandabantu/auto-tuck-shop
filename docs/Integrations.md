@@ -100,7 +100,9 @@ Optional error tracking. Initialised only if `SENTRY_DSN` is set. Tagged with `S
 
 **Release tracking:** `deploy-production.yml` creates a Sentry release after every prod deploy (using `SENTRY_AUTH_TOKEN` secret). Issues auto-resolve when they stop appearing in a new release, and each issue shows which version introduced it.
 
-**Cron monitors:** `send_daily_reports` and `send_nudges` are wrapped with `sentry_sdk.monitor`. Two monitors appear at `aakitech.sentry.io/crons/` — `send-daily-reports` and `send-nudges`. Both alert if a run is missed or takes longer than 5 minutes.
+**Cron monitors:** `send_daily_reports`, `send_nudges`, `auto_cancel_stale_sales`, and `pilot_activity_alert` are wrapped with `sentry_sdk.monitor`. These appear at `aakitech.sentry.io/crons/` as `send-daily-reports`, `send-nudges`, `auto-cancel-stale-sales`, and `pilot-activity-alert`. All alert if a run is missed or takes longer than 5 minutes.
+
+**Pilot activity alert (#273):** `pilot_activity_alert` runs daily and checks whether any real (non-test) pilot shop has recorded a confirmed sale in the last 7 days. If not, it fires a Sentry error-level `capture_message` tagged `failure_type: pilot_activity_silence` (so it shows up as an issue, not just a missed cron) and WhatsApps `ADMIN_PHONE_NUMBER` directly — this is a business-silence signal, not a crash, so it can't rely on the cron-monitor heartbeat alone.
 
 **Required secrets:** `SENTRY_DSN`, `SENTRY_ENVIRONMENT` (set to `production` on prod), `SENTRY_AUTH_TOKEN` (GitHub secret, used by deploy workflow only).
 
@@ -111,3 +113,4 @@ Key signals to watch:
 - `FieldError` / `AttributeError` — model/query mismatches after migrations
 - Cron monitors going red — daily reports or nudges not firing
 - `failure_type: report_card_generation` — report card image failed to generate or upload; falls back to text-only, so this is the only signal that visual reports are silently degrading. Tagged with `company_id` and `source` (`send_daily_summary` for the scheduled daily report, `sales_query_on_demand` for the on-demand "send daily summary" chat command) — filter/alert on `source` to distinguish the two.
+- `failure_type: pilot_activity_silence` — zero real pilot shops recorded a sale in the last 7 days (see #273). Tagged with `window_days`; also WhatsApps the admin directly, so this Sentry issue is a secondary/durable record rather than the primary alert channel.

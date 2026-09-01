@@ -26,6 +26,9 @@
         "btn_approve": "Approve",
         "btn_reject": "Reject"
     },
+    "pilot_admin": {
+        "silence_alert": "⚠ Pilot alert: no real pilot shop has recorded a sale in the last {days} days.\n\nRun `pilot_audit` for details."
+    },
     "approval": {
         "welcome": "Welcome to Auto Tuck Shop! Your account has been approved.\n\nCompany: {company}\n\nYou can now send sales messages to track your sales. For example:\n\n'2 Mazoe $3 each'\n\n'5 bread R18 each, 2 sugar R40 each'\n\nThe bot accepts USD ($), Rand (R), and ZiG.\n\nAs an owner, you can also add assistants by sending:\n'add assistant +2637812345678'\n\nReply *stop* anytime to turn off reminder messages.\n\n🌐 Learn more about us: https://auto-tuck-shop.fly.dev\n👥 Join our WhatsApp community: https://chat.whatsapp.com/G2HQ6f4Do3k3s7pLD3pnZI"
     },
