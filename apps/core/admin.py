@@ -15,6 +15,13 @@ from apps.core.pilot_test_phones import PILOT_TEST_PHONES
 # an active, already-onboarded shop is flagged as needing attention (#274).
 NEEDS_ATTENTION_DAYS = 7
 
+# How many days a WaitlistEntry can sit PENDING before it's flagged stale.
+# Backstop for #339: the admin notification for a new signup can fail
+# silently (network error, WhatsApp API error) with only a Sentry log to
+# show for it — this flag surfaces the entry itself even if that log is
+# never noticed.
+STALE_WAITLIST_DAYS = 3
+
 
 class NeedsAttentionFilter(admin.SimpleListFilter):
     title = f"silent {NEEDS_ATTENTION_DAYS}+ days"
@@ -220,10 +227,24 @@ class UserProfileAdmin(admin.ModelAdmin):
         return request.user.is_superuser
 
 
+class StalePendingFilter(admin.SimpleListFilter):
+    title = f"stale {STALE_WAITLIST_DAYS}+ days"
+    parameter_name = "stale_pending"
+
+    def lookups(self, request, model_admin):
+        return (("yes", "Stale pending"),)
+
+    def queryset(self, request, queryset):
+        if self.value() != "yes":
+            return queryset
+        cutoff = timezone.now() - timedelta(days=STALE_WAITLIST_DAYS)
+        return queryset.filter(status=WaitlistEntry.Status.PENDING, created_at__lt=cutoff)
+
+
 @admin.register(WaitlistEntry)
 class WaitlistEntryAdmin(admin.ModelAdmin):
-    list_display = ["phone_number", "company_name", "status", "created_at", "approved_at"]
-    list_filter = ["status", "created_at"]
+    list_display = ["phone_number", "company_name", "status", "created_at", "approved_at", "stale_pending_flag"]
+    list_filter = ["status", "created_at", StalePendingFilter]
     search_fields = ["phone_number", "company_name", "notes"]
     readonly_fields = ["created_at", "approved_at", "approved_by", "company", "user_profile", "status"]
     actions = ["approve_entries", "reject_entries"]
@@ -234,6 +255,15 @@ class WaitlistEntryAdmin(admin.ModelAdmin):
         if not request.user.is_superuser:
             readonly += ["phone_number", "company_name", "first_message"]
         return readonly
+
+    def stale_pending_flag(self, obj):
+        if obj.status != WaitlistEntry.Status.PENDING:
+            return False
+        cutoff = timezone.now() - timedelta(days=STALE_WAITLIST_DAYS)
+        return obj.created_at < cutoff
+
+    stale_pending_flag.boolean = True
+    stale_pending_flag.short_description = f"Stale {STALE_WAITLIST_DAYS}+ days"
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}

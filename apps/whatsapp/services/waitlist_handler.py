@@ -155,6 +155,14 @@ def _deactivate_assistant(user_profile_id: int) -> None:
 
 
 async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
+    # Never let a failure here propagate silently (#339) — by the time this
+    # runs, the shop owner has already received their own confirmation
+    # message, so an unhandled exception would leave the entry stuck pending
+    # with no visible symptom anywhere except a single Sentry log line. The
+    # stale-pending admin flag (WaitlistEntryAdmin) is the backstop that
+    # surfaces it even if this log is never noticed — but the template
+    # fallback below is the first line of defence and should still get a
+    # chance to run before we fall all the way back to "just log it".
     message = t(
         "waitlist_admin.new_request",
         phone=entry.phone_number,
@@ -164,34 +172,56 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
         {"id": f"waitlist_approve_{entry.id}", "title": t("waitlist_admin.btn_approve")},
         {"id": f"waitlist_reject_{entry.id}", "title": t("waitlist_admin.btn_reject")},
     ]
-    message_sid = await _send_response_with_buttons(ADMIN_PHONE_NUMBER, message, buttons)
-    if message_sid:
-        await _store_waitlist_response_message_sid(entry.id, message_sid)
-    else:
-        # Button send failed (likely outside 24h window). Fall back to the
-        # ats_admin_new_signup template — approved by Meta, see #281. Templates
-        # can't carry Approve/Reject buttons, so this is informational only;
-        # Brighton approves/rejects via the admin panel link in the message.
+    try:
+        message_sid = await _send_response_with_buttons(ADMIN_PHONE_NUMBER, message, buttons)
+    except Exception:
+        # Raised failure (network error, API timeout) — same recovery as a
+        # graceful None return below: still try the template fallback before
+        # giving up (#339 review — the original version caught this too
+        # early and skipped the fallback entirely for this exact path).
         logger.warning(
-            "Admin waitlist button notification failed for entry %s (%s) — falling back to template",
+            "Admin waitlist button notification raised for entry %s (%s) — falling back to template",
             entry.id,
             entry.phone_number,
         )
-        from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
-        message_excerpt = entry.first_message[:100] if entry.first_message else "(none)"
-        components = [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": entry.phone_number},
-                    {"type": "text", "text": message_excerpt},
-                    {"type": "text", "text": "https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/"},
-                ],
-            }
-        ]
-        await get_whatsapp_client().send_template_message(
-            ADMIN_PHONE_NUMBER, "ats_admin_new_signup", components=components
+        message_sid = None
+
+    if message_sid:
+        await _store_waitlist_response_message_sid(entry.id, message_sid)
+        return
+
+    try:
+        await _send_admin_notification_template_fallback(entry)
+    except Exception:
+        logger.exception(
+            "Admin waitlist notification failed entirely for entry %s (%s) — "
+            "entry will show as stale-pending in admin until manually processed",
+            entry.id,
+            entry.phone_number,
         )
+
+
+async def _send_admin_notification_template_fallback(entry: WaitlistEntry) -> None:
+    # Button send failed (likely outside 24h window, or a transient error).
+    # Fall back to the ats_admin_new_signup template — approved by Meta, see
+    # #281. Templates can't carry Approve/Reject buttons, so this is
+    # informational only; Brighton approves/rejects via the admin panel link
+    # in the message.
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    message_excerpt = entry.first_message[:100] if entry.first_message else "(none)"
+    components = [
+        {
+            "type": "body",
+            "parameters": [
+                {"type": "text", "text": entry.phone_number},
+                {"type": "text", "text": message_excerpt},
+                {"type": "text", "text": "https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/"},
+            ],
+        }
+    ]
+    await get_whatsapp_client().send_template_message(
+        ADMIN_PHONE_NUMBER, "ats_admin_new_signup", components=components
+    )
 
 
 async def process_new_waitlist_entry_async(sender: str, text: str) -> None:

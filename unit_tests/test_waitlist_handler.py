@@ -2,9 +2,11 @@
 greeting-as-company-name rejection (#256)."""
 
 import asyncio
+from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
 from django.test import TransactionTestCase
+from django.utils import timezone
 
 from apps.core.models import WaitlistEntry
 from apps.whatsapp.services.waitlist_handler import (
@@ -180,3 +182,64 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
 
         _run(_run_test())
         send_template_mock.assert_not_called()
+
+    def test_raised_button_failure_still_falls_back_to_template(self):
+        """Regression for #339 review (Brighton) — the first version of this
+        fix caught a raised exception from _send_response_with_buttons too
+        early, before the existing ats_admin_new_signup template fallback
+        got a chance to run. That meant a transient network/API error left
+        the admin with no immediate notification at all, whereas a graceful
+        None return already correctly triggered the fallback. Both failure
+        modes must reach the same fallback path."""
+        client_mock = AsyncMock()
+        send_template_mock = AsyncMock()
+        client_mock.send_template_message = send_template_mock
+
+        async def _run_test():
+            with patch(
+                "apps.whatsapp.services.waitlist_handler._send_response_with_buttons",
+                new=AsyncMock(side_effect=ConnectionError("simulated network failure")),
+            ), patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=client_mock):
+                await _send_waitlist_admin_notification(self.entry)
+
+        _run(_run_test())
+        send_template_mock.assert_called_once()
+        args, _ = send_template_mock.call_args
+        self.assertEqual(args[1], "ats_admin_new_signup")
+
+    def test_unhandled_send_exception_does_not_propagate(self):
+        """Regression for #339 — entry #30 sat pending for 29 days with zero
+        trace of any notification attempt. Even if the button send AND the
+        template fallback both fail (e.g. the WhatsApp client is completely
+        unreachable), _send_waitlist_admin_notification must swallow the
+        failure itself so callers never need to guess whether it's safe to
+        call unguarded — the stale-pending admin flag is the backstop for
+        exactly this case."""
+
+        async def _run_test():
+            with patch(
+                "apps.whatsapp.services.waitlist_handler._send_response_with_buttons",
+                new=AsyncMock(side_effect=ConnectionError("simulated network failure")),
+            ), patch(
+                "apps.whatsapp.services.whatsapp_client.get_whatsapp_client",
+                side_effect=ConnectionError("client unreachable too"),
+            ):
+                await _send_waitlist_admin_notification(self.entry)
+
+        _run(_run_test())  # must not raise
+
+    def test_stale_pending_flag_reflects_send_failure(self):
+        from apps.core.admin import WaitlistEntryAdmin
+        from django.contrib import admin as django_admin
+
+        self.entry.created_at = timezone.now() - timedelta(days=4)
+        self.entry.save(update_fields=["created_at"])
+        admin_instance = WaitlistEntryAdmin(WaitlistEntry, django_admin.site)
+        self.assertTrue(admin_instance.stale_pending_flag(self.entry))
+
+    def test_stale_pending_flag_false_for_recent_entry(self):
+        from apps.core.admin import WaitlistEntryAdmin
+        from django.contrib import admin as django_admin
+
+        admin_instance = WaitlistEntryAdmin(WaitlistEntry, django_admin.site)
+        self.assertFalse(admin_instance.stale_pending_flag(self.entry))

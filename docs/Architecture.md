@@ -190,6 +190,15 @@ Admin notified via WhatsApp with Approve/Reject buttons
   excluding known non-pilot numbers (`apps/core/pilot_test_phones.py`, shared with the
   `pilot_audit` management command so the exclusion list can't drift between the two).
 
+`WaitlistEntryAdmin` (`apps/core/admin.py`, `/admin/core/waitlistentry/`) has the same kind of
+backstop for a different failure mode:
+
+- **"Stale N+ days" flag/filter** (`StalePendingFilter`, `STALE_WAITLIST_DAYS = 3`) — flags any
+  `WaitlistEntry` still `PENDING` after the window. Backstop for #339: the admin notification for
+  a new signup (`_send_waitlist_admin_notification`) can fail even after its own template fallback
+  (network error, WhatsApp API error), leaving only a Sentry log to show for it. This flag surfaces
+  the stuck entry itself even if that log is never noticed.
+
 This is passive visibility only — it doesn't page or notify anyone. Proactive alerting when the
 whole pilot goes quiet is a separate, independent mechanism (see #273).
 
