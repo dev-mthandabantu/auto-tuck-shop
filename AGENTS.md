@@ -90,6 +90,12 @@ Read the relevant page before starting any task (session step 3). Update docs in
 | `docs/Pilot-Launch.md` | Pilot success metrics and review cadence |
 | `docs/Home.md` | Overview and quick links |
 
+`docs/` is the sole source of truth — not the GitHub wiki. Wikis require a paid GitHub plan on a
+private repo (this org is on the free plan), so the wiki has been structurally unreachable since
+the repo went private in PR #218 (24 Jun 2026), when its content was migrated into `docs/` for
+exactly this reason. Don't spend time syncing or auditing the wiki — there's nothing reachable
+there to sync to (see #36).
+
 ## Scope rule
 
 Production is live. A change that doesn't support the 20-shop pilot or fix a real issue belongs in the backlog.
@@ -139,6 +145,15 @@ gh release create vX.X.X \
 ## Deployment
 
 `USE_MOCK_WHATSAPP` must **not** be `True` on production — if it is, the bot silently swallows outbound messages instead of sending them. Confirm before every prod deploy.
+
+**Prod Fly secret flips that change user-facing behavior** (e.g. `USE_TEMPLATE_MESSAGES`) go through the same staging-first discipline as code deploys — a secret change is not exempt from verification just because it isn't a code push. #237 was a real month-long silent regression caused by exactly this gap: a flag flip changed behavior for shops it wasn't meant to touch, and nothing caught it until a manual audit.
+
+Before flipping such a secret in prod:
+1. Set it on staging first, and manually verify the specific behavior it's meant to change — not just "the flag is on," but the actual user-facing outcome (e.g. for `USE_TEMPLATE_MESSAGES`: confirm a shop *within* the 24h window still gets the image card, not just that a shop *outside* it gets the template).
+2. Note which shops/cases are in vs. out of scope for the change, before flipping in prod.
+3. After flipping in prod, manually re-confirm the in-scope and out-of-scope cases both still behave as expected.
+
+This applies to secrets that change behavior, not routine rotation (e.g. an API key refresh with no logic change).
 
 ## Sentry
 
