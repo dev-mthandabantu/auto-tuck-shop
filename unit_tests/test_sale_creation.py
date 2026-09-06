@@ -7,7 +7,7 @@ from django.test import TestCase
 from apps.catalog.models import Product, ProductPrice
 from apps.core.models import Company
 from apps.sales.models import Sale
-from apps.sales.services import canonicalize_product_name, create_sale_from_parsed_items
+from apps.sales.services import canonicalize_product_name, create_sale_from_parsed_items, find_product_by_name
 from apps.whatsapp.services.message_parser import _apply_rule_based_price_hints
 
 
@@ -183,6 +183,29 @@ class CreateSaleFromParsedItemsTest(TestCase):
         self.assertEqual(product_a.name, "automobile")
         self.assertEqual(Product.objects.count(), 1)
 
+    def test_singular_and_plural_product_name_resolve_to_same_product(self):
+        """Regression for #359: the LLM isn't deterministic about singular
+        vs. plural for the same spoken/typed product across messages (e.g.
+        "banana" on one call, "bananas" on another) — those must land on the
+        same Product row or price/report history for that product silently
+        splits in two, same failure mode as #356's emoji/text split. Fixed
+        via find_product_by_name's singular/plural fallback lookup, not by
+        transforming the incoming name (see FindProductByNameSingularPluralTest
+        for why that would be unsafe)."""
+        result_a = create_sale_from_parsed_items(
+            items=[{"product_name": "banana", "quantity": 1, "unit_price": Decimal("3.00"), "currency": "USD"}],
+            company=self.company,
+        )
+        result_b = create_sale_from_parsed_items(
+            items=[{"product_name": "bananas", "quantity": 5, "unit_price": Decimal("3.00"), "currency": "USD"}],
+            company=self.company,
+        )
+
+        product_a = result_a["sale"].items.get().product
+        product_b = result_b["sale"].items.get().product
+        self.assertEqual(product_a, product_b)
+        self.assertEqual(Product.objects.count(), 1)
+
 
 class CanonicalizeProductNameTest(TestCase):
     """Direct tests for canonicalize_product_name — no LLM or DB needed."""
@@ -243,6 +266,87 @@ class CanonicalizeProductNameTest(TestCase):
         composed string should canonicalize, since the LLM can return any of
         the full Unicode emoji set as a product_name."""
         self.assertEqual(canonicalize_product_name("👍"), "thumbs up")
+
+
+class FindProductByNameSingularPluralTest(TestCase):
+    """Direct tests for find_product_by_name's singular/plural fallback
+    (#359) — a lookup-only fallback, never a rename, so it can't corrupt an
+    existing product's stored name the way transforming the name up front
+    did (see the "Games" regression this replaced)."""
+
+    def setUp(self):
+        self.company = _make_company()
+
+    def test_plural_query_finds_existing_singular_product(self):
+        product = Product.objects.create(name="banana", company=self.company)
+        self.assertEqual(find_product_by_name("bananas", self.company), product)
+
+    def test_singular_query_finds_existing_plural_product(self):
+        product = Product.objects.create(name="cokes", company=self.company)
+        self.assertEqual(find_product_by_name("coke", self.company), product)
+
+    def test_exact_match_preferred_over_variant(self):
+        exact = Product.objects.create(name="books", company=self.company)
+        Product.objects.create(name="book", company=self.company)
+        self.assertEqual(find_product_by_name("books", self.company), exact)
+
+    def test_singular_lookup_matches_existing_plural_only_product_without_renaming_it(self):
+        """The #359 regression this replaced: an up-front transform that
+        stripped "Games" -> "Game" before the lookup silently failed to find
+        the existing "Games" product at all (mismatch, not a merge). The
+        fallback-lookup approach instead finds it correctly as a genuine
+        singular/plural match — and, critically, never renames the stored
+        product: it stays "Games" in the database."""
+        product = Product.objects.create(name="Games", company=self.company)
+        found = find_product_by_name("Game", self.company)
+        self.assertEqual(found, product)
+        self.assertEqual(found.name, "Games")
+
+    def test_no_existing_product_at_all_returns_none(self):
+        self.assertIsNone(find_product_by_name("Widget", self.company))
+
+    def test_short_word_has_no_variant_lookup(self):
+        """Words of 3 characters or fewer are skipped, matching #220-era
+        exact-match-only behavior for short/ambiguous tokens like "gas"."""
+        Product.objects.create(name="gas", company=self.company)
+        self.assertIsNone(find_product_by_name("ga", self.company))
+
+    def test_irregular_es_plural_resolves_to_singular(self):
+        """"boxes" -> "box": a bare trailing-"s" strip alone gives "boxe",
+        which never matches. Words ending in s/x/z/ch/sh pluralize with
+        "-es", not just "-s" — the fallback needs to try stripping "es" too."""
+        product = Product.objects.create(name="box", company=self.company)
+        self.assertEqual(find_product_by_name("boxes", self.company), product)
+
+    def test_irregular_es_singular_resolves_to_plural(self):
+        product = Product.objects.create(name="matches", company=self.company)
+        self.assertEqual(find_product_by_name("match", self.company), product)
+
+    def test_double_s_word_does_not_produce_triple_s_variant(self):
+        """"glass" must not generate "glasss" as a fallback (a bare "+s"
+        append on a word already ending "ss") — it should try the real "-es"
+        plural instead."""
+        product = Product.objects.create(name="glasses", company=self.company)
+        self.assertEqual(find_product_by_name("glass", self.company), product)
+
+    def test_es_suffix_class_does_not_also_produce_bare_s_variant(self):
+        """"match" pluralizes to "matches" only — not "matchs" as well.
+        Any word ending in s/x/z/ch/sh always malforms under a bare "+s"
+        append, so it should never be generated for that class, not just
+        for the "ss" case "glass" covers."""
+        product = Product.objects.create(name="matches", company=self.company)
+        self.assertEqual(find_product_by_name("match", self.company), product)
+        decoy = Product.objects.create(name="matchs", company=self.company)
+        self.assertNotEqual(find_product_by_name("match", self.company), decoy)
+
+    def test_case_variant_duplicates_resolve_deterministically(self):
+        """If a company already has both "Banana" and "banana" as separate
+        rows (a pre-existing duplicate, not something this lookup creates),
+        the fallback must not depend on undefined DB ordering — it should
+        consistently resolve to the same (oldest) row."""
+        first = Product.objects.create(name="Banana", company=self.company)
+        Product.objects.create(name="banana", company=self.company)
+        self.assertEqual(find_product_by_name("bananas", self.company), first)
 
 
 class PriceHintsTest(TestCase):

@@ -111,11 +111,74 @@ def canonicalize_product_name(name: str) -> str:
     return " ".join(names)
 
 
+def _singular_plural_variants(name: str) -> list[str]:
+    """Return the other singular/plural form(s) of the last word in `name`,
+    to try as a fallback lookup — never as a rename. Deliberately narrow
+    (4+ char last word) since this only feeds a lookup against EXISTING
+    products, not a transform applied to the name that gets stored — see
+    #359's regression against an already-existing product literally named
+    "Games" (arcade credits, not the plural of "game"): renaming the
+    incoming name outright would have silently mismatched that shop's real
+    product. Trying both forms as a lookup fallback carries no such risk —
+    it only ever matches a product the company already has under that exact
+    name.
+
+    Handles two pluralization patterns:
+    - bare "-s": "banana" <-> "bananas".
+    - "-es" after s/x/z/ch/sh: "box" <-> "boxes", "glass" <-> "glasses",
+      "match" <-> "matches". A word in this class only ever gets the "-es"
+      form generated, never bare "+s" too — "box" -> ["boxes"], not
+      ["boxs", "boxes"]. Appending bare "s" to a word ending in
+      s/x/z/ch/sh always produces a malformed non-word ("glasss", "boxs",
+      "matchs"): it can never match a real product, so generating it is
+      pure waste at best. The two patterns are mutually exclusive per
+      word, decided by the same suffix check in both directions.
+    """
+    words = name.split(" ")
+    last = words[-1]
+    if len(last) <= 3:
+        return []
+    lower = last.lower()
+    variants: list[str] = []
+
+    if lower.endswith("es") and lower[:-2] and (
+        lower[:-2].endswith(("s", "x", "z", "ch", "sh"))
+    ):
+        variants.append(last[:-2])
+    elif lower.endswith("s") and not lower.endswith("ss"):
+        variants.append(last[:-1])
+    elif lower.endswith(("s", "x", "z", "ch", "sh")):
+        variants.append(last + "es")
+    else:
+        variants.append(last + "s")
+
+    return [" ".join(words[:-1] + [v]) for v in variants]
+
+
 def find_product_by_name(name: str, company: Company) -> Product | None:
-    """Find a product by name (case-insensitive exact match), scoped to company."""
-    return Product.objects.filter(
-        active=True, company=company
-    ).filter(name__iexact=name).first()
+    """Find a product by name (case-insensitive exact match), scoped to
+    company. Falls back to the other singular/plural form of the name if no
+    exact match exists (#359: "bananas" finds an existing "banana" product,
+    and vice versa) — this only ever matches a product the company already
+    has; it never renames or creates anything, so an existing product like
+    "Games" is untouched when no "Game" product exists to match against.
+
+    Ordered by id (oldest first) so a case-variant duplicate (e.g. both
+    "Banana" and "banana" already existing) resolves to the same row every
+    time instead of depending on undefined DB ordering. This doesn't merge
+    or clean up existing duplicates — see #360 for that — it just makes an
+    already-ambiguous lookup deterministic rather than silently random.
+    """
+    products = Product.objects.filter(active=True, company=company)
+    product = products.filter(name__iexact=name).order_by("id").first()
+    if product:
+        return product
+
+    for variant in _singular_plural_variants(name):
+        product = products.filter(name__iexact=variant).order_by("id").first()
+        if product:
+            return product
+    return None
 
 
 @transaction.atomic
