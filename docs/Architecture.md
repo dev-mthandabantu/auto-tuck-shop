@@ -202,6 +202,24 @@ backstop for a different failure mode:
 This is passive visibility only — it doesn't page or notify anyone. Proactive alerting when the
 whole pilot goes quiet is a separate, independent mechanism (see #273).
 
+`pilot_audit` (`apps/whatsapp/management/commands/pilot_audit.py`) separately flags two distinct
+per-shop failure modes in its "Issues" output, run manually or via `fly ssh console` (see
+`AGENTS.md`):
+
+- **SILENT** — approved, zero confirmed sales, never messaged. Never had traction.
+- **CHURNED** (#210) — had real traction (`CHURN_MIN_SALES = 2`+ confirmed sales) and then went
+  quiet: no inbound message *and* no confirmed sale for `CHURN_SILENCE_DAYS = 5`+ days (whichever
+  of the two is more recent counts as "last active"). Deliberately shorter than
+  `NEEDS_ATTENTION_DAYS`/`PILOT_SILENCE_WINDOW_DAYS` (7 days) — a shop that already proved it can
+  sell going quiet is a higher-signal event than a shop that was never active, worth a personal
+  check-in sooner. Both constants live in `apps/core/services.py`, alongside
+  `PILOT_SILENCE_WINDOW_DAYS`, so the definition can't drift between call sites even though
+  `pilot_audit` computes it directly in a Python loop and `CompanyAdmin` doesn't (yet) surface
+  CHURNED itself (its Subquery-annotation approach is a different shape, kept out of scope here).
+
+SILENT and CHURNED are mutually exclusive by construction (SILENT requires zero sales, CHURNED
+requires `CHURN_MIN_SALES`+).
+
 ## Async Execution Model
 
 Gunicorn workers are synchronous. `handle_incoming_message()` calls `run_async()` which:
