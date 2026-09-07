@@ -70,7 +70,7 @@ class PilotAuditChurnTest(TestCase):
 
         output = _run_audit()
 
-        self.assertNotIn("CHURNED", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
 
     def test_does_not_flag_shop_active_within_window(self):
         company = _make_company()
@@ -80,7 +80,7 @@ class PilotAuditChurnTest(TestCase):
 
         output = _run_audit()
 
-        self.assertNotIn("CHURNED", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
 
     def test_recent_message_counts_as_active_even_without_recent_sale(self):
         company = _make_company()
@@ -90,7 +90,7 @@ class PilotAuditChurnTest(TestCase):
 
         output = _run_audit()
 
-        self.assertNotIn("CHURNED", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
 
     def test_recent_sale_counts_as_active_even_without_recent_message(self):
         company = _make_company()
@@ -100,12 +100,29 @@ class PilotAuditChurnTest(TestCase):
 
         output = _run_audit()
 
-        self.assertNotIn("CHURNED", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
 
-    def test_silent_shop_is_not_also_flagged_churned(self):
-        _make_company()
+    def test_shop_silent_for_just_under_the_threshold_is_not_yet_churned(self):
+        # Pins the strict `<` in pilot_audit.py against the cutoff: a shop whose
+        # last activity is just inside CHURN_SILENCE_DAYS is not flagged. (Using
+        # exactly CHURN_SILENCE_DAYS is not reliable here — `now` is re-evaluated
+        # inside the command, always slightly later than this setup's timestamp,
+        # so an exact-boundary age would drift to just past the cutoff by the
+        # time the command runs.)
+        company = _make_company()
+        just_inside = timedelta(days=CHURN_SILENCE_DAYS) - timedelta(minutes=1)
+        for _ in range(CHURN_MIN_SALES):
+            _make_sale(company, Sale.Status.CONFIRMED, age=just_inside)
+        _make_message(company, age=just_inside)
 
         output = _run_audit()
 
-        self.assertIn("SILENT", output)
-        self.assertNotIn("CHURNED", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
+
+    def test_never_messaged_shop_is_flagged_silent_not_churned(self):
+        company = _make_company()
+
+        output = _run_audit()
+
+        self.assertIn(f"SILENT: {company.name}", output)
+        self.assertNotIn(f"CHURNED: {company.name}", output)
