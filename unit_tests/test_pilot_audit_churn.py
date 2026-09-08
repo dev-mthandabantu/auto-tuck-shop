@@ -6,6 +6,7 @@ quiet, distinct from SILENT (never messaged, zero sales).
 
 from datetime import timedelta
 from io import StringIO
+from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -116,6 +117,32 @@ class PilotAuditChurnTest(TestCase):
         _make_message(company, age=just_inside)
 
         output = _run_audit()
+
+        self.assertNotIn(f"CHURNED: {company.name}", output)
+
+    def test_shop_exactly_at_threshold_is_not_yet_churned(self):
+        # The operator guard: pins `<` vs `<=` at the exact boundary. The helpers
+        # (and pilot_audit itself) each call timezone.now() independently, so an
+        # exact-age fixture drifts past the cutoff by the time the command runs
+        # unless both are anchored to the same instant — hence freezing the
+        # command's clock to match the fixtures' clock here.
+        company = _make_company()
+        frozen = timezone.now()
+        exact_ts = frozen - timedelta(days=CHURN_SILENCE_DAYS)
+        for _ in range(CHURN_MIN_SALES):
+            sale = Sale.objects.create(company=company, status=Sale.Status.CONFIRMED)
+            Sale.objects.filter(pk=sale.pk).update(sale_timestamp=exact_ts)
+        message = WhatsAppMessage.objects.create(
+            company=company,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            message_type=WhatsAppMessage.MessageType.TEXT,
+            phone_number=company.members.first().phone_number,
+            content="hi",
+        )
+        WhatsAppMessage.objects.filter(pk=message.pk).update(timestamp=exact_ts)
+
+        with patch("apps.whatsapp.management.commands.pilot_audit.timezone.now", return_value=frozen):
+            output = _run_audit()
 
         self.assertNotIn(f"CHURNED: {company.name}", output)
 
