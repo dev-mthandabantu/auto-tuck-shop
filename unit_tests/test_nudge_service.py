@@ -4,6 +4,7 @@ import asyncio
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
@@ -138,9 +139,25 @@ class EligibleCtasTest(TransactionTestCase):
         self.assertIn("onboarding_first_sale", keys)
 
     def test_onboarding_ctas_excluded_after_window(self):
-        context = {"days_since_onboarding": 20, "streak": 0, "features_used": [], "nudge_stage": 0}
+        # onboarding_shona_tip/onboarding_reports are time-boxed to the first
+        # _ONBOARDING_DAYS. onboarding_first_sale is NOT — it stays eligible
+        # for as long as the shop has zero sales, regardless of age (#257).
+        context = {"days_since_onboarding": 20, "streak": 0, "last_active_days_ago": 1, "features_used": [], "nudge_stage": 0}
         keys = [c["key"] for c in _eligible_ctas(context)]
         self.assertNotIn("onboarding_first_sale", keys)
+        self.assertNotIn("onboarding_shona_tip", keys)
+
+    def test_onboarding_first_sale_still_eligible_after_window_if_never_activated(self):
+        # Regression: a shop with zero sales ever was falling into the
+        # discovery/retention bucket once days_since_onboarding > 14, receiving
+        # nudges about features of a workflow it had never entered (#257).
+        context = {"days_since_onboarding": 40, "streak": 0, "last_active_days_ago": None, "features_used": [], "nudge_stage": 0}
+        keys = [c["key"] for c in _eligible_ctas(context)]
+        self.assertIn("onboarding_first_sale", keys)
+        self.assertNotIn("discovery_weekly_report", keys)
+        self.assertNotIn("discovery_multi_item", keys)
+        self.assertNotIn("discovery_photo_upload", keys)
+        self.assertNotIn("retention_no_sales_today", keys)
 
     def test_streak_cta_only_when_streak_gte_2(self):
         ctx_no_streak = {"days_since_onboarding": 5, "streak": 1, "features_used": [], "nudge_stage": 0}
@@ -186,15 +203,16 @@ class EligibleCtasTest(TransactionTestCase):
         keys = [c["key"] for c in _eligible_ctas(context)]
         self.assertIn("retention_no_sales_today", keys)
 
-    def test_discovery_photo_upload_always_eligible(self):
+    def test_discovery_photo_upload_always_eligible_for_activated_shop(self):
         # #258: surface the existing photo -> batch-sale parsing capability as a
         # discovery nudge, same shape as discovery_multi_item — not gated on a
         # features_used flag, since there's no reliable way to detect "owner
         # keeps a written record" from message history the way "used reports"
-        # or "sent a multi-item message" can be detected.
+        # or "sent a multi-item message" can be detected. Requires prior sales
+        # history though — see test_retention_excluded_for_never_sold_shop (#257).
         for context in [
-            {"days_since_onboarding": 3, "streak": 0, "features_used": [], "nudge_stage": 0},
-            {"days_since_onboarding": 20, "streak": 0, "features_used": ["multi_item", "reports"], "nudge_stage": 0},
+            {"days_since_onboarding": 3, "streak": 0, "last_active_days_ago": 0, "features_used": [], "nudge_stage": 0},
+            {"days_since_onboarding": 20, "streak": 0, "last_active_days_ago": 5, "features_used": ["multi_item", "reports"], "nudge_stage": 0},
         ]:
             keys = [c["key"] for c in _eligible_ctas(context)]
             self.assertIn("discovery_photo_upload", keys)
@@ -203,7 +221,11 @@ class EligibleCtasTest(TransactionTestCase):
 class MaybeSendNudgesTest(TransactionTestCase):
 
     def setUp(self):
-        self.company = _make_company(first_message_date=date.today() - timedelta(days=3))
+        # day 1 deliberately avoids _ONBOARDING_FOLLOWUP_DAYS (3, 7, 14) —
+        # this class tests the generic nudge path in isolation; a shop on
+        # its actual followup cadence day is covered by
+        # test_yields_slot_to_onboarding_followup_candidate below (#257).
+        self.company = _make_company(first_message_date=date.today() - timedelta(days=1))
         self.profile = _make_user_profile(self.company, "+263771000099")
 
     @patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=False)
@@ -271,6 +293,43 @@ class MaybeSendNudgesTest(TransactionTestCase):
         self.assertNotIn(self.company.id, result["sent"])
         self.assertIn(self.company.id, result["skipped"])
 
+    @patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True)
+    def test_yields_slot_to_onboarding_followup_candidate(self, _mock_window):
+        """Regression for #257 — a never-activated shop on its exact day-3/7/14
+        onboarding followup cadence day must not be claimed by the generic nudge
+        first. Both mechanisms share the one-message-per-day gate (#262); if the
+        generic nudge fires here, maybe_send_onboarding_followup never runs and
+        onboarding_followup_count never advances. The yield only applies when
+        USE_TEMPLATE_MESSAGES is on (see test_sends_nudge_on_cadence_day_when_
+        templates_disabled for the off case) — pinned explicitly here rather
+        than relying on the environment's default."""
+        self.company.first_message_date = date.today() - timedelta(days=3)
+        self.company.save()
+        with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
+             patch.object(settings, "USE_TEMPLATE_MESSAGES", True):
+            result = _run(maybe_send_nudges())
+        self.assertNotIn(self.company.id, result["sent"])
+        self.assertIn(self.company.id, result["skipped"])
+        self.company.refresh_from_db()
+        self.assertIsNone(self.company.last_automated_message_date)
+
+    @patch("apps.whatsapp.services.nudge_service._in_send_window", return_value=True)
+    def test_sends_nudge_on_cadence_day_when_templates_disabled(self, _mock_window):
+        """When USE_TEMPLATE_MESSAGES is off, maybe_send_onboarding_followup
+        never runs (send_nudges.py gates it on that flag) — yielding the slot
+        in that case would mean the shop gets no nudge at all that day, a
+        regression from before this PR. Must still send the generic nudge (#257)."""
+        self.company.first_message_date = date.today() - timedelta(days=3)
+        self.company.save()
+        async def _run_with_mocks():
+            with patch("apps.whatsapp.services.nudge_service._recently_active", new=AsyncMock(return_value=False)), \
+                 patch("apps.whatsapp.services.nudge_service.pick_nudge_cta", new=AsyncMock(return_value={"cta_key": "onboarding_first_sale", "message": "Record your first sale!", "cta_type": "text"})), \
+                 patch("apps.whatsapp.services.nudge_service._send_nudge", new=AsyncMock(return_value=True)), \
+                 patch.object(settings, "USE_TEMPLATE_MESSAGES", False):
+                return await maybe_send_nudges()
+        result = _run(_run_with_mocks())
+        self.assertIn(self.company.id, result["sent"])
+
 
 def _mock_client(send_template_mock):
     """Return a mock WhatsApp client with send_template_message replaced."""
@@ -281,11 +340,13 @@ def _mock_client(send_template_mock):
 
 
 class OnboardingFollowupTest(TransactionTestCase):
+    """Shops that sent a message and onboarded but never recorded a confirmed sale — regression for #257."""
 
     def setUp(self):
+        # day 3 is the first date in _ONBOARDING_FOLLOWUP_DAYS (#257)
         self.company = _make_company(
             name="New Shop",
-            first_message_date=date.today() - timedelta(days=2),
+            first_message_date=date.today() - timedelta(days=3),
         )
         self.profile = _make_user_profile(self.company, "+263771000200")
 
@@ -301,7 +362,7 @@ class OnboardingFollowupTest(TransactionTestCase):
         self.assertIn(self.company.id, result["sent"])
         send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup_shona_version")
         self.company.refresh_from_db()
-        self.assertTrue(self.company.onboarding_followup_sent)
+        self.assertEqual(self.company.onboarding_followup_count, 1)
 
     def test_sends_english_template_to_english_speaking_owner(self):
         self.profile.language = "en"
@@ -314,10 +375,20 @@ class OnboardingFollowupTest(TransactionTestCase):
         self.assertIn(self.company.id, result["sent"])
         send_mock.assert_called_once_with("+263771000200", "ats_onboarding_followup")
 
-    def test_skips_shop_approved_today(self):
-        self.company.first_message_date = date.today()
+    def test_skips_shop_not_on_cadence_day(self):
+        self.company.first_message_date = date.today() - timedelta(days=2)
         self.company.save()
-        # No candidates found — no send call made, just check result
+        # 2 days isn't in _ONBOARDING_FOLLOWUP_DAYS (3, 7, 14) — no candidates found
+        result = _run(maybe_send_onboarding_followup())
+        self.assertNotIn(self.company.id, result["sent"])
+
+    def test_stops_after_cap_reached(self):
+        # Regression: the old BooleanField sent exactly once then let the shop
+        # fall back to the generic daily nudge cycle indefinitely. Now capped
+        # at len(_ONBOARDING_FOLLOWUP_DAYS) attempts, then handed to human
+        # outreach per #149 (#257).
+        self.company.onboarding_followup_count = 3
+        self.company.save()
         result = _run(maybe_send_onboarding_followup())
         self.assertNotIn(self.company.id, result["sent"])
 
@@ -327,8 +398,8 @@ class OnboardingFollowupTest(TransactionTestCase):
         result = _run(maybe_send_onboarding_followup())
         self.assertNotIn(self.company.id, result["sent"])
 
-    def test_skips_shop_already_sent(self):
-        self.company.onboarding_followup_sent = True
+    def test_skips_shop_already_sent_today(self):
+        self.company.last_onboarding_followup_date = date.today()
         self.company.save()
         result = _run(maybe_send_onboarding_followup())
         self.assertNotIn(self.company.id, result["sent"])

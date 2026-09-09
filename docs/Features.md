@@ -121,6 +121,10 @@ One discovery CTA of note: `discovery_photo_upload` surfaces the existing photo 
 
 **User response:** Most CTAs (e.g. `discovery_multi_item`, `discovery_photo_upload`, retention CTAs) are plain text — the owner just replies normally, no special handling required. `onboarding_reports` is the one button-type CTA today: tapping "Yes, set it up" enters the closing time setup flow, tapping "Not now" sends a brief acknowledgement and suppresses further nudges for that cycle. See `_eligible_ctas`' `cta_type` per CTA for which is which.
 
+**Never-activated shops (#257):** A shop that completed onboarding but has never recorded a single confirmed sale is a different case from one that's merely quiet today — `_eligible_ctas` treats "zero sales ever" (`last_active_days_ago is None`) as a standing fact, not a phase that expires after the onboarding window. `onboarding_first_sale` remains eligible for as long as this holds, regardless of `_ONBOARDING_DAYS` — it just stops being the *only* one once the shop is inside the onboarding window, where `onboarding_shona_tip` and `onboarding_reports` are also eligible; past the window it's the only CTA left for a never-activated shop. `retention_*` and `discovery_*` CTAs (which describe features of an existing sales workflow) are excluded entirely until the shop's first confirmed sale. Separately, `maybe_send_onboarding_followup` sends the `ats_onboarding_followup` template on a capped day-3/7/14 cadence (`_ONBOARDING_FOLLOWUP_DAYS`) to shops in this state, then stops — same pattern as `maybe_send_zero_contact_followup` below, so a still-silent shop after day 14 gets handed to human outreach (#149) rather than more automated messages.
+
+**Zero-message shops:** A shop that was approved but has never sent any inbound message at all (not even to complete onboarding) gets `ats_zero_contact_followup` via `maybe_send_zero_contact_followup`, on the same capped day-2/5/7 pattern, then also stops in favor of human outreach (#149).
+
 **Implementation:** `apps/whatsapp/services/nudge_service.py` + `send_nudges` management command.
 
 ## Read Receipts & Typing Indicator

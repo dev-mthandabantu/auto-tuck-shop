@@ -127,8 +127,8 @@ class CompanyAdmin(admin.ModelAdmin):
         shop isn't eligible yet, or the last attempted send failed."""
         parts = [f"stage {obj.nudge_stage}"]
         parts.append(f"last nudge {obj.last_nudge_date}" if obj.last_nudge_date else "never nudged")
-        if obj.onboarding_followup_sent:
-            parts.append("onboarding followup sent")
+        if obj.onboarding_followup_count:
+            parts.append(f"{obj.onboarding_followup_count} onboarding followups")
         if obj.zero_contact_followup_count:
             parts.append(f"{obj.zero_contact_followup_count} zero-contact followups")
         return " · ".join(parts)

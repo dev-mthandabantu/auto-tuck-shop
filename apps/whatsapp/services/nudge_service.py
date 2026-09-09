@@ -150,24 +150,37 @@ def _eligible_ctas(context: dict) -> list[dict]:
         except (KeyError, IndexError):
             logger.warning("Missing nudge locale key: %s", key)
 
+    # A shop that has never recorded a single confirmed sale — as opposed to
+    # one that's merely quiet today — has no sales history for retention or
+    # discovery content to refer to. onboarding_first_sale fits regardless of
+    # days_since_onboarding, and stays eligible past the normal onboarding
+    # window for as long as this remains true; inside the window it's one of
+    # several eligible onboarding CTAs (see below), past it it's the only one
+    # left (#257 — these shops were falling into the discovery bucket once
+    # the 14-day cutoff passed, receiving nudges about features of a
+    # workflow they'd never entered).
+    never_activated = context.get("last_active_days_ago") is None
+    if never_activated:
+        add("onboarding_first_sale")
+
     # Onboarding (first 2 weeks only)
     if days is not None and days <= _ONBOARDING_DAYS:
-        if context.get("last_active_days_ago") is None:
-            add("onboarding_first_sale")
         add("onboarding_shona_tip")
         add("onboarding_reports", cta_type="button")
 
     # Retention — only if shop has prior sales history
-    if context.get("last_active_days_ago") is not None:
+    if not never_activated:
         add("retention_no_sales_today")
     if streak >= 2:
         add("retention_streak", streak=streak)
 
-    # Discovery — gated on features not yet used
-    if "reports" not in features:
-        add("discovery_weekly_report")
-    add("discovery_multi_item")
-    add("discovery_photo_upload")
+    # Discovery — describes features of an existing sales workflow, so only
+    # eligible for shops that have actually recorded a sale (#257).
+    if not never_activated:
+        if "reports" not in features:
+            add("discovery_weekly_report")
+        add("discovery_multi_item")
+        add("discovery_photo_upload")
 
     # Gated CTAs — enabled via settings flags when features ship
     if getattr(settings, "NUDGE_ENABLE_UNDO_CTA", False):
@@ -346,6 +359,23 @@ async def maybe_send_nudges(now=None) -> dict:
     sent = []
     skipped = []
 
+    # maybe_send_onboarding_followup runs after this function in the same
+    # command invocation, but only when USE_TEMPLATE_MESSAGES is on
+    # (send_nudges.py) — checking candidates when it's off would make this
+    # loop yield a slot to a mechanism that never actually runs, so a
+    # never-activated shop would get no nudge at all that day. When it is
+    # on, both mechanisms share the one-automated-message-per-day gate
+    # (_already_messaged_today, #262); without this check, this loop would
+    # claim that slot first on a shop's exact day-3/7/14 cadence day, so
+    # onboarding_followup_count would never advance and the capped
+    # followup — the mechanism with a real endpoint — would silently never
+    # fire. This loop yields the slot to it on those days instead (#257).
+    onboarding_followup_candidate_ids = (
+        {c.id for c in await _load_onboarding_followup_candidates()}
+        if settings.USE_TEMPLATE_MESSAGES
+        else set()
+    )
+
     for company in companies:
         if await _recently_active(company):
             logger.debug("Company %s recently active — skipping nudge", company.id)
@@ -354,6 +384,13 @@ async def maybe_send_nudges(now=None) -> dict:
 
         if await _already_messaged_today(company):
             logger.debug("Company %s already messaged today — skipping nudge", company.id)
+            skipped.append(company.id)
+            continue
+
+        if company.id in onboarding_followup_candidate_ids:
+            logger.debug(
+                "Company %s due for onboarding followup today — yielding nudge slot", company.id
+            )
             skipped.append(company.id)
             continue
 
@@ -392,17 +429,38 @@ async def maybe_send_nudges(now=None) -> dict:
     return {"sent": sent, "skipped": skipped}
 
 
+# Days after first message to send each zero-sale onboarding follow-up
+# attempt. Capped at 3 — a shop still with zero sales after day 14 needs
+# personal outreach (see #149), not more automated attempts. Same pattern
+# as _ZERO_CONTACT_FOLLOWUP_DAYS below, for shops that did message but never
+# sold anything (#257).
+_ONBOARDING_FOLLOWUP_DAYS = (3, 7, 14)
+
+
 @sync_to_async
 def _load_onboarding_followup_candidates():
+    # Called twice per cron tick when USE_TEMPLATE_MESSAGES is on — once from
+    # maybe_send_nudges' yield check, once here inside
+    # maybe_send_onboarding_followup. No mutation happens between the two
+    # calls within a single tick, so both see the same candidate set; the
+    # extra query is an accepted cost at pilot scale (#257).
+    #
+    # Exact-day match only — no catch-up for shops already past every cadence
+    # day. A catch-up was considered for the first pilot's already-lapsed
+    # shops, but those shops are out of scope: 3+ months silent with zero
+    # sales, needs a message from Bradley, not another template. Any shop
+    # onboarding from here forward starts at day 0 and hits this cadence
+    # normally (#257).
     from apps.sales.models import Sale
     from apps.core.models import Company
     close_old_connections()
     today = timezone.localdate()
+    target_dates = {today - timedelta(days=days) for days in _ONBOARDING_FOLLOWUP_DAYS}
     companies = Company.objects.filter(
         active=True,
-        first_message_date__isnull=False,
-        onboarding_followup_sent=False,
-    ).exclude(first_message_date=today)
+        first_message_date__in=target_dates,
+        onboarding_followup_count__lt=len(_ONBOARDING_FOLLOWUP_DAYS),
+    )
     result = []
     for company in companies:
         has_sale = Sale.objects.filter(company=company, status="confirmed").exists()
@@ -415,17 +473,26 @@ def _load_onboarding_followup_candidates():
 def _mark_onboarding_followup_sent(company) -> None:
     from apps.core.models import Company
     close_old_connections()
-    Company.objects.filter(pk=company.pk).update(onboarding_followup_sent=True)
+    Company.objects.filter(pk=company.pk).update(
+        onboarding_followup_count=company.onboarding_followup_count + 1,
+        last_onboarding_followup_date=timezone.localdate(),
+    )
 
 
 async def maybe_send_onboarding_followup() -> dict:
-    """Send ats_onboarding_followup template to approved shops that have never recorded a sale."""
+    """Send ats_onboarding_followup template to approved shops that have never recorded a sale.
+    Fires on day 3, 7, and 14 after first message, then stops — still-zero-sale shops after
+    that need personal outreach (see #149), not more nudges. #257."""
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     candidates = await _load_onboarding_followup_candidates()
     sent = []
     skipped = []
     client = get_whatsapp_client()
+    today = timezone.localdate()
     for company in candidates:
+        if company.last_onboarding_followup_date == today:
+            skipped.append(company.id)
+            continue
         if await _already_messaged_today(company):
             logger.debug("Company %s already messaged today — skipping onboarding followup", company.id)
             skipped.append(company.id)
@@ -444,7 +511,10 @@ async def maybe_send_onboarding_followup() -> dict:
             if all_succeeded:
                 await _mark_onboarding_followup_sent(company)
                 await _mark_automated_message_sent(company)
-                logger.info("Onboarding followup sent to company %s", company.id)
+                logger.info(
+                    "Onboarding followup sent to company %s (attempt %s/%s)",
+                    company.id, company.onboarding_followup_count + 1, len(_ONBOARDING_FOLLOWUP_DAYS),
+                )
                 sent.append(company.id)
             else:
                 logger.warning("Onboarding followup send failed for company %s — not marking as sent", company.id)
@@ -480,7 +550,8 @@ def _mark_unnamed_shop_followup_sent(company) -> None:
 
 async def maybe_send_unnamed_shop_followup() -> dict:
     """Ask shops still stuck on the "Unnamed Shop" placeholder for their real
-    name — one-shot, same pattern as maybe_send_onboarding_followup. #316."""
+    name — one-shot, unlike maybe_send_onboarding_followup, which now retries
+    on a capped cadence (#257). #316."""
     from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
     candidates = await _load_unnamed_shop_followup_candidates()
     sent = []

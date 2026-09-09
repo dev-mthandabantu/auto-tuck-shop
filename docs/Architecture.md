@@ -181,7 +181,7 @@ Admin notified via WhatsApp with Approve/Reject buttons
   confirms or rejects is auto-cancelled after 24h (`auto_cancel_stale_sales` management command,
   `apps/sales/services.py::auto_cancel_stale_pending_sales`) — fast-follow to #298, which made
   `PENDING` sales safe to have around but didn't add anything to clean them up once stale.
-- **Nudge status** — reads `Company.nudge_stage` / `last_nudge_date` / `onboarding_followup_sent` /
+- **Nudge status** — reads `Company.nudge_stage` / `last_nudge_date` / `onboarding_followup_count` /
   `zero_contact_followup_count` directly. These only advance on a *confirmed* WhatsApp send success
   (see `nudge_service.py`), so a stalled value here means either the shop isn't yet eligible or the
   last attempted automated send failed.
