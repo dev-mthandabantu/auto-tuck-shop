@@ -202,6 +202,41 @@ backstop for a different failure mode:
 This is passive visibility only — it doesn't page or notify anyone. Proactive alerting when the
 whole pilot goes quiet is a separate, independent mechanism (see #273).
 
+`pilot_audit` (`apps/whatsapp/management/commands/pilot_audit.py`) separately flags two distinct
+per-shop failure modes in its "Issues" output, run manually or via `fly ssh console` (see
+`AGENTS.md`):
+
+- **SILENT** — approved, zero confirmed sales, never messaged. Never had traction.
+- **CHURNED** (#210) — had real traction (`CHURN_MIN_SALES = 2`+ confirmed sales) and then went
+  quiet: no inbound message *and* no confirmed sale for more than `CHURN_SILENCE_DAYS = 5` days
+  (whichever of the two is more recent counts as "last active"; a shop silent for exactly 5 days
+  is not yet flagged — the comparison is strict). Deliberately shorter than
+  `NEEDS_ATTENTION_DAYS`/`PILOT_SILENCE_WINDOW_DAYS` (7 days) — a shop that already proved it can
+  sell going quiet is a higher-signal event than a shop that was never active, worth a personal
+  check-in sooner. `CHURN_SILENCE_DAYS` and `CHURN_MIN_SALES` are co-located in
+  `apps/core/services.py` alongside `PILOT_SILENCE_WINDOW_DAYS` for discoverability, not because
+  it prevents drift — `NEEDS_ATTENTION_DAYS` (the admin's own "gone quiet" threshold) lives
+  separately in `apps/core/admin.py` and is a different value (7 days) already. `pilot_audit`
+  computes CHURNED directly in a Python loop; `CompanyAdmin` doesn't (yet) surface CHURNED itself
+  (its Subquery-annotation approach is a different shape, kept out of scope here).
+
+SILENT and CHURNED are mutually exclusive by construction (SILENT requires zero sales, CHURNED
+requires `CHURN_MIN_SALES`+). A shop with exactly one confirmed sale that goes quiet trips neither
+flag — it can still surface via NO SUMMARY / NO CLOSE TIME, so it isn't invisible to the audit,
+but it is invisible to churn detection specifically. That's the deliberate `CHURN_MIN_SALES`
+tradeoff; worth watching, since a 1-sale shop going quiet is arguably the most fragile pilot state.
+
+CHURNED reads inbound messages and confirmed sales, not outbound nudges, so a flag firing now
+during the outbound-nudge pause (#278) is a real signal about shop activity, not an artifact of
+the pause — #278 stopped outbound only.
+
+One divergence from `NeedsAttentionFilter` worth knowing: that filter treats a shop with no
+activity timestamp at all (`NULL`) as stale (`Q(__isnull=True) | Q(__lt=cutoff)`), while CHURNED
+requires `last_active_at is not None` and treats a shop with no timestamp as not-churned. In
+practice this doesn't matter for CHURNED specifically — `CHURN_MIN_SALES = 2`+ confirmed sales
+guarantees `last_active_at` is never `None` (a confirmed sale always sets it) — but it's a
+deliberate difference in how the two functions treat the edge case, not an oversight.
+
 ## Async Execution Model
 
 Gunicorn workers are synchronous. `handle_incoming_message()` calls `run_async()` which:

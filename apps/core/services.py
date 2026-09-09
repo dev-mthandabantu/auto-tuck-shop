@@ -21,6 +21,15 @@ from apps.whatsapp.models import WhatsAppMessage
 # threshold proposed in #273.
 PILOT_SILENCE_WINDOW_DAYS = 7
 
+# Churn detection (#210): a shop that had real traction (this many confirmed
+# sales) and then went quiet (no inbound message *and* no sale for this many
+# days) gets flagged separately from a never-active SILENT shop — different
+# cause, different follow-up. Shorter than PILOT_SILENCE_WINDOW_DAYS's 7 days
+# because a shop that already proved it can sell going quiet is a higher
+# signal, worth a personal check-in sooner.
+CHURN_SILENCE_DAYS = 5
+CHURN_MIN_SALES = 2
+
 
 class PhoneNumberAlreadyRegisteredError(ValueError):
     """Raised when trying to approve a waitlist entry for a phone number that already has a profile."""

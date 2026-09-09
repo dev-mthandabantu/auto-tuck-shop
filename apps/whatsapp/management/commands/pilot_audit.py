@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
 from apps.core.pilot_test_phones import PILOT_TEST_PHONES as TEST_PHONES
+from apps.core.services import CHURN_MIN_SALES, CHURN_SILENCE_DAYS
 from apps.sales.models import Sale
 from apps.whatsapp.models import WhatsAppMessage
 
@@ -83,6 +84,19 @@ class Command(BaseCommand):
                 last_inbound.timestamp.strftime("%Y-%m-%d %H:%M UTC") if last_inbound else "never"
             )
 
+            last_sale = (
+                Sale.objects.filter(company=c, status=Sale.Status.CONFIRMED)
+                .order_by("-sale_timestamp")
+                .first()
+            )
+            last_active_at = max(
+                (t for t in (
+                    last_inbound.timestamp if last_inbound else None,
+                    last_sale.sale_timestamp if last_sale else None,
+                ) if t is not None),
+                default=None,
+            )
+
             msgs_window = WhatsAppMessage.objects.filter(
                 company=c, direction="inbound", timestamp__gte=since
             ).count()
@@ -97,6 +111,13 @@ class Command(BaseCommand):
                 issues.append(f"  UNNAMED: {phone} — shop name was never collected")
             if sales_total == 0 and last_inbound is None:
                 issues.append(f"  SILENT: {c.name} ({phone}) — approved but never messaged")
+            churn_cutoff = now - timedelta(days=CHURN_SILENCE_DAYS)
+            if sales_total >= CHURN_MIN_SALES and last_active_at is not None and last_active_at < churn_cutoff:
+                days_silent = (now - last_active_at).days
+                issues.append(
+                    f"  CHURNED: {c.name} ({phone}) — {sales_total} sales, "
+                    f"last active {days_silent}d ago"
+                )
             if sales_total > 0 and c.last_summary_date is None:
                 issues.append(f"  NO SUMMARY: {c.name} — has {sales_total} sales but never received a report")
             if sales_total > 0 and not c.normal_closing_time:
