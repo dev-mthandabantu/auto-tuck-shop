@@ -109,11 +109,40 @@ Production is live. A change that doesn't support the 20-shop pilot or fix a rea
 - **Update priority labels** when significance changes (e.g. "nice to have" → production bug).
 - **Update this file's phase status** when the above changes.
 
+## Adversarial self-review before requesting a reviewer
+
+Try to break your own change before a reviewer does. Not "I read my diff" (already in PR
+Readiness) — an actual attempt to find what a reviewer would find. Recent PRs took 60–130h from
+first review to merge against a ~2h repo median, almost all of it round-trips over things the
+author could have found alone.
+
+**Before opening the PR:**
+
+- **Run the tests** — `python manage.py test unit_tests`. CI runs only `test_localizations`, so a
+  green check proves nothing about your change. If you can't run them, say so in the PR rather
+  than claiming a pass.
+- **For each test you added, ask what would still pass if the feature were deleted.** A test that
+  passes with the code removed is testing nothing — a real finding here more than once.
+- **Check every claim in your PR body and docs against the code as written.** Off-by-one in a
+  stated threshold, a constant described as living in the wrong file — both have blocked PRs here.
+- **Name the states your tests don't construct** — boundaries, null/empty, `<` vs `<=`, a second
+  record where the fixture has one.
+
+**Then post a comment on your own PR** saying what you attacked and what came back, before tagging
+a reviewer. A timestamped comment, not a checkbox, so it's visible the pass happened first.
+"Traced X, found nothing" is worth writing — it tells the reviewer where not to spend a round.
+Trivial PRs: write "Trivial — no adversarial pass needed" and move on.
+
+**Reviewers, the same discipline inverted:** don't request a change you haven't traced to a
+concrete affected case (a review here once asked for a clause that reached zero shops — the author
+built it, then deleted it a round later); run deep passes *before* the first review, not between
+rounds two and three; label blocking vs discussion explicitly; retract out loud when you're wrong.
+
 ## Shipping flow
 
 1. **Branch off main**, one branch per issue (e.g. `fix/duplicate-language-prompt`).
 2. **Open a PR** — title includes the issue number. Fill in the PR template properly; Plan/Prediction is written *before* reviewing your own diff, not after. If it touches rendered UI (Django admin, report card images, WhatsApp message/button rendering), attach a screenshot/GIF/video — see the PR Readiness checklist.
-3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly).
+3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly) — after the adversarial self-review pass above, not before.
 4. **Approving reviewers: Brighton, Omar, Kundai, or Munashe** — branch protection requires one approval before merge. Madrena is not a required/approving reviewer (see "Working with Madrena") — she can still read PRs and ask questions as part of learning. **Action item, not yet done:** the actual GitHub branch protection rule on `main` still needs manual updating to match this — check Settings → Branches → main → required reviewers.
 5. **Merge** once approved — squash merge, branch deleted.
 6. **Staging auto-deploys** on every push to main (GitHub Actions, no manual step).
