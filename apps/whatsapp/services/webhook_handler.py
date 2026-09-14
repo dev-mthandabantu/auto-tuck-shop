@@ -110,7 +110,7 @@ def _extract_phone_number(sender: str) -> str:
 @db_sync_to_async
 def _get_profile_by_phone(phone_number: str) -> UserProfile | None:
     try:
-        return UserProfile.objects.select_related("user").get(phone_number=phone_number)
+        return UserProfile.objects.select_related("user", "company").get(phone_number=phone_number)
     except UserProfile.DoesNotExist:
         return None
 
@@ -220,6 +220,23 @@ async def _handle_nudge_reports_no_async(phone_number: str) -> None:
     profile = await _get_profile_by_phone(phone_number)
     lang = profile.language if profile else DEFAULT_LANGUAGE
     await _send_response(phone_number, t("nudge.reports_declined", lang=lang))
+
+
+def handle_unhandled_button_tap(sender: str) -> None:
+    """Catch-all for a tapped button we have no specific handler for — most
+    commonly a quick-reply on a Meta-approved template like
+    ats_reengagement, but this fires for ANY unrecognized button_id (see
+    #209). Records the tap so the tap-followup check in nudge_service can
+    catch the shop while it's still warm; does not reply immediately."""
+    phone_number = _extract_phone_number(sender)
+    run_async(_handle_unhandled_button_tap_async(phone_number))
+
+
+async def _handle_unhandled_button_tap_async(phone_number: str) -> None:
+    from apps.whatsapp.services.nudge_service import record_unhandled_button_tap
+    profile = await _get_profile_by_phone(phone_number)
+    if profile:
+        await record_unhandled_button_tap(profile.company)
 
 
 from datetime import time as _time

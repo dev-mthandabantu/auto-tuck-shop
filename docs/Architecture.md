@@ -202,11 +202,34 @@ backstop for a different failure mode:
 This is passive visibility only — it doesn't page or notify anyone. Proactive alerting when the
 whole pilot goes quiet is a separate, independent mechanism (see #273).
 
-`pilot_audit` (`apps/whatsapp/management/commands/pilot_audit.py`) separately flags two distinct
+`pilot_audit` (`apps/whatsapp/management/commands/pilot_audit.py`) separately flags three distinct
 per-shop failure modes in its "Issues" output, run manually or via `fly ssh console` (see
 `AGENTS.md`):
 
 - **SILENT** — approved, zero confirmed sales, never messaged. Never had traction.
+- **TAPPED, NO SALE** (#209) — tapped a button with no dedicated handler (`Company.last_unhandled_button_tap_at`,
+  set by the catch-all in `webhook_handler.handle_unhandled_button_tap` for ANY `button_id` that
+  isn't one of the interactive buttons the codebase sends and handles itself — most commonly a
+  quick-reply on a Meta-approved template like `ats_reengagement`, but genuinely any unrecognized
+  tap, including a stale button_id from an older deploy) but recorded no confirmed sale since. This
+  is the highest-leverage re-engagement moment — the owner is demonstrably present and paying
+  attention right then — so the flag surfaces it for a personal follow-up while it's still warm,
+  alongside the automated soft-nudge sent by `nudge_service.maybe_send_unhandled_tap_followup` 2+
+  hours after the tap (`_TAP_FOLLOWUP_WINDOW`). That mechanism runs on every `send_nudges` tick
+  regardless of the 07:00–10:00 send window and does not gate on `_already_messaged_today` — both
+  deliberate, since the tap is event-triggered and time-sensitive (a delayed reply risks landing
+  outside Meta's 24h customer-service window for a plain-text send), unlike the daily drip nudges
+  those two gates exist to pace. The flag clears once `Company.unhandled_tap_followup_sent` is set
+  — either by the automated follow-up firing, or a fresh tap resetting the window.
+
+  **Known approximation:** both the automated check and the `pilot_audit` flag compare the tap
+  against `Sale.sale_timestamp`, which is set at sale *creation* and never updated on confirm
+  (`sale_handler.py`'s confirm path only writes `status`). A sale created before the tap but
+  confirmed after it is missed by this comparison, so the shop can get a follow-up (or the audit
+  flag) it didn't need. Accepted rather than fixed for #209 — the window is narrow (requires a
+  pending sale spanning the tap), the failure mode is self-correcting (one extra soft text, or a
+  human double-checking before reaching out), and `Sale` is a high-risk model to modify for a fix
+  scoped to this feature. A real `confirmed_at` field would close this properly; not done here.
 - **CHURNED** (#210) — had real traction (`CHURN_MIN_SALES = 2`+ confirmed sales) and then went
   quiet: no inbound message *and* no confirmed sale for more than `CHURN_SILENCE_DAYS = 5` days
   (whichever of the two is more recent counts as "last active"; a shop silent for exactly 5 days

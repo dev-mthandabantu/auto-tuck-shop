@@ -45,6 +45,8 @@ class Company(models.Model):
     last_zero_contact_followup_date = models.DateField(null=True, blank=True, help_text="Last date ats_zero_contact_followup was sent — prevents double-sending same day")
     last_automated_message_date = models.DateField(null=True, blank=True, help_text="Last date any automated nudge/followup message was sent to this company — prevents two different nudge mechanisms firing same-day")
     unnamed_shop_followup_sent = models.BooleanField(default=False, help_text="ats_unnamed_shop_followup template has been sent — don't send again (see #316)")
+    last_unhandled_button_tap_at = models.DateTimeField(null=True, blank=True, help_text="When the owner last tapped a button with no code-side handler (e.g. a quick-reply on a Meta template) — starts the tap-followup window (see #209)")
+    unhandled_tap_followup_sent = models.BooleanField(default=False, help_text="Soft follow-up for last_unhandled_button_tap_at has been sent — reset to False on each new tap so the window can fire again (see #209)")
 
     def format_price(self, amount):
         """Format a price using this company's currency."""

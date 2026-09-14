@@ -300,6 +300,21 @@ def _record_nudge_sent(company, today: date) -> None:
 
 
 @sync_to_async
+def record_unhandled_button_tap(company) -> None:
+    """Record that the shop tapped a button with no dedicated handler (most
+    commonly a quick-reply on a Meta-approved template like ats_reengagement,
+    but this fires for ANY unrecognized button_id — see the catch-all in
+    views.py) — starts (or restarts) the tap-followup window checked by
+    maybe_send_unhandled_tap_followup. #209."""
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(pk=company.pk).update(
+        last_unhandled_button_tap_at=timezone.now(),
+        unhandled_tap_followup_sent=False,
+    )
+
+
+@sync_to_async
 def _get_non_opted_out_phones(company) -> list[str]:
     from apps.core.models import UserProfile
     close_old_connections()
@@ -583,6 +598,143 @@ async def maybe_send_unnamed_shop_followup() -> dict:
                 skipped.append(company.id)
         except Exception:
             logger.exception("Failed to send unnamed-shop followup to company %s", company.id)
+            skipped.append(company.id)
+    return {"sent": sent, "skipped": skipped}
+
+
+# Window after an unhandled button tap in which we check for a follow-on
+# sale before sending the soft tap-followup nudge (#209). The tap is the
+# highest-leverage re-engagement moment we get — checked every 15 min via
+# the same send_nudges cron as the other mechanisms, so this only needs to
+# be wide enough to avoid catching a shop mid-typing.
+_TAP_FOLLOWUP_WINDOW = timedelta(hours=2)
+
+# Upper bound on tap age — past this, stop treating the tap as eligible.
+# The follow-up is a plain-text send_message, which Meta only permits within
+# 24h of the customer's last interaction; past that, WhatsApp requires a
+# template. Without this bound, a tap that's gone stale (cron downtime, a
+# run of send failures) would retry the same doomed plain-text send every
+# 15 min forever, since a failed send never sets unhandled_tap_followup_sent.
+# A tap that ages out here is not retried further by this mechanism, but
+# stays visible via pilot_audit's "TAPPED, NO SALE" flag for a human
+# follow-up — that flag reads the same Company fields independently.
+_TAP_FOLLOWUP_MAX_AGE = timedelta(hours=24)
+
+
+@sync_to_async
+def _load_unhandled_tap_followup_candidates():
+    from apps.sales.models import Sale
+    from apps.core.models import Company
+    close_old_connections()
+    now = timezone.now()
+    cutoff = now - _TAP_FOLLOWUP_WINDOW
+    stale_cutoff = now - _TAP_FOLLOWUP_MAX_AGE
+    companies = Company.objects.filter(
+        active=True,
+        unhandled_tap_followup_sent=False,
+        last_unhandled_button_tap_at__isnull=False,
+        last_unhandled_button_tap_at__lte=cutoff,
+        last_unhandled_button_tap_at__gte=stale_cutoff,
+    )
+    result = []
+    for company in companies:
+        # Known approximation: sale_timestamp is set at sale creation and
+        # never updated on confirm (sale_handler.py only touches `status`),
+        # so this compares the tap against when the sale was first typed in,
+        # not when it was confirmed. A sale created before the tap but
+        # confirmed after it is missed here, and the shop gets a follow-up
+        # it didn't need. Accepted for #209: narrow timing window, self-
+        # correcting (one extra soft text), and Sale is a high-risk model to
+        # touch for a fix scoped to this — see #209 PR discussion.
+        sold_since_tap = Sale.objects.filter(
+            company=company,
+            status="confirmed",
+            sale_timestamp__gte=company.last_unhandled_button_tap_at,
+        ).exists()
+        if not sold_since_tap:
+            result.append(company)
+    return result
+
+
+@sync_to_async
+def _mark_unhandled_tap_followup_sent(company) -> None:
+    """Mark the follow-up sent, but only if the tap timestamp on the row
+    still matches what was loaded when this company became a candidate.
+    Without this guard: cron loads a stale tap, owner re-taps mid-send
+    (resetting the timestamp and the flag to False for their new window),
+    then the old send completes and an unconditional update would stamp
+    True over that reset — silently losing the new tap's follow-up window.
+    #209."""
+    from apps.core.models import Company
+    close_old_connections()
+    Company.objects.filter(
+        pk=company.pk,
+        last_unhandled_button_tap_at=company.last_unhandled_button_tap_at,
+    ).update(unhandled_tap_followup_sent=True)
+
+
+async def maybe_send_unhandled_tap_followup() -> dict:
+    """Send a soft text follow-up to shops that tapped a button with no
+    dedicated handler (most commonly a quick-reply on a Meta-approved
+    template) but recorded no sale within the follow-up window — the tap
+    proves they were reachable and paying attention, so this is the best
+    window to convert them back. #209.
+
+    Deliberately does NOT gate on _already_messaged_today: the tap is a
+    user-initiated inbound interaction (most commonly a tap on the daily
+    nudge sent that same morning, which already set
+    last_automated_message_date), and replying to it isn't the two-automated-
+    mechanisms-stacking problem #262's gate exists to prevent. It still calls
+    _mark_automated_message_sent on send so later same-day mechanisms treat
+    this as today's message.
+
+    Unlike the other four mechanisms in this file (which are all-or-nothing:
+    a company only counts as "sent" if every recipient's send succeeds),
+    this one marks a company sent as soon as ANY recipient succeeds. Those
+    four are template-gated (USE_TEMPLATE_MESSAGES) and mostly single-
+    recipient in practice; this one runs unconditionally in production and
+    explicitly needs to support multi-recipient shops (owner + assistant),
+    so an all-or-nothing gate would re-send to an already-successful
+    recipient every 15 min whenever just one recipient's send keeps
+    failing — a live risk here, not a theoretical one. #209."""
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    from apps.whatsapp.services.webhook_handler import t
+    candidates = await _load_unhandled_tap_followup_candidates()
+    sent = []
+    skipped = []
+    client = get_whatsapp_client()
+    for company in candidates:
+        phones = await _get_non_opted_out_phones(company)
+        if not phones:
+            skipped.append(company.id)
+            continue
+        lang = await _company_owner_lang(company)
+        message = t("nudge.tap_followup", lang=lang)
+        try:
+            any_succeeded = False
+            failed_phones = []
+            for phone in phones:
+                success = await client.send_message(phone, message)
+                if success:
+                    any_succeeded = True
+                else:
+                    failed_phones.append(phone)
+            if any_succeeded:
+                await _mark_unhandled_tap_followup_sent(company)
+                await _mark_automated_message_sent(company)
+                if failed_phones:
+                    logger.warning(
+                        "Tap followup partially failed for company %s — sent to some recipients, failed for %s",
+                        company.id, failed_phones,
+                    )
+                else:
+                    logger.info("Tap followup sent to company %s", company.id)
+                sent.append(company.id)
+            else:
+                logger.warning("Tap followup send failed for company %s — not marking as sent", company.id)
+                skipped.append(company.id)
+        except Exception:
+            logger.exception("Failed to send tap followup to company %s", company.id)
             skipped.append(company.id)
     return {"sent": sent, "skipped": skipped}
 

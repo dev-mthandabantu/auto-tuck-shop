@@ -122,6 +122,22 @@ class Command(BaseCommand):
                 issues.append(f"  NO SUMMARY: {c.name} — has {sales_total} sales but never received a report")
             if sales_total > 0 and not c.normal_closing_time:
                 issues.append(f"  NO CLOSE TIME: {c.name} — has sales but no permanent closing time set")
+            if c.last_unhandled_button_tap_at and not c.unhandled_tap_followup_sent:
+                # Same known approximation as nudge_service's tap-followup
+                # check: sale_timestamp is creation time, not confirmation
+                # time, so a sale created before the tap but confirmed after
+                # it can be missed here — see the comment in
+                # _load_unhandled_tap_followup_candidates for why this is
+                # accepted rather than fixed for #209.
+                sold_since_tap = Sale.objects.filter(
+                    company=c, status=Sale.Status.CONFIRMED, sale_timestamp__gte=c.last_unhandled_button_tap_at
+                ).exists()
+                if not sold_since_tap:
+                    tap_str = c.last_unhandled_button_tap_at.strftime("%Y-%m-%d %H:%M UTC")
+                    issues.append(
+                        f"  TAPPED, NO SALE: {c.name} ({phone}) — tapped a button at {tap_str}, "
+                        "no sale since — good candidate for a personal follow-up while warm (#209)"
+                    )
 
         # ── Recent sales detail ───────────────────────────────────────────────
         w(style.MIGRATE_LABEL(f"\n-- Sales last {hours}h --"))

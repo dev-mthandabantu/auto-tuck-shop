@@ -8,6 +8,7 @@ from apps.whatsapp.services.nudge_service import (
     maybe_send_nudges,
     maybe_send_onboarding_followup,
     maybe_send_reengagement,
+    maybe_send_unhandled_tap_followup,
     maybe_send_unnamed_shop_followup,
     maybe_send_zero_contact_followup,
 )
@@ -25,6 +26,15 @@ class Command(BaseCommand):
             "failure_issue_threshold": 1,
         }
         with sentry_sdk.monitor(monitor_slug="send-nudges", monitor_config=monitor_config):
+            # Event-triggered by an inbound tap, not part of the daily drip
+            # the send window paces — deliberately not window-gated (#209).
+            # Must run before the outside_window return below, or it only
+            # fires ~3h/day like everything else in this command.
+            tap_followup = asyncio.run(maybe_send_unhandled_tap_followup())
+            self.stdout.write(
+                f"Tap followups sent: {tap_followup['sent']}, skipped: {tap_followup['skipped']}"
+            )
+
             result = asyncio.run(maybe_send_nudges())
             reason = result.get("reason", "")
             if reason == "outside_window":

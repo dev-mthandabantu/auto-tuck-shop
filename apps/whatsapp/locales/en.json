@@ -99,6 +99,7 @@
         "btn_reports_yes": "Yes, set it up",
         "btn_reports_no": "Not now",
         "reports_declined": "No problem — you can always ask me *how much did I make today?* anytime.",
+        "tap_followup": "Ready when you are — just send a sale like *2 Mazoe $3 each* and I'll record it.",
         "retention_no_sales_today": "You have not logged any sales today yet — what did you sell?",
         "retention_streak": "You are on a {streak}-day streak! Keep it going — what did you sell today?",
         "retention_yesterday_recap": "Yesterday you recorded {count} sales totalling {currency}{total}. Add today's?",

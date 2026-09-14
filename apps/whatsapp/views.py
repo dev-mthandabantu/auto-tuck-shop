@@ -20,6 +20,7 @@ from apps.whatsapp.services.webhook_handler import (
     handle_new_waitlist_entry,
     handle_nudge_reports_no,
     handle_nudge_reports_yes,
+    handle_unhandled_button_tap,
     handle_sale_button_action,
     handle_waitlist_button_action,
     handle_waitlisted_message,
@@ -238,11 +239,26 @@ class WhatsAppWebhookView(View):
             logger.info("Duplicate message %s from %s, skipping", message_id, sender)
             return
 
-        # Handle interactive button responses
+        # Handle interactive button responses (buttons we send ourselves via
+        # send_message_with_buttons — sale confirm/fix, waitlist, language,
+        # closing time, currency, onboarding_reports)
         if message_type == "interactive":
             interactive = message.get("interactive", {})
             if interactive.get("type") == "button_reply":
                 button_id = interactive.get("button_reply", {}).get("id", "")
+                self._handle_button_response(sender, button_id, message)
+                return
+
+        # Handle a Meta-approved template's quick-reply button tap (e.g.
+        # ats_reengagement) — a different payload shape from the interactive
+        # buttons above: {"type": "button", "button": {"payload": ..., "text": ...}}.
+        # Routes through the same handler once button_id is extracted, since
+        # everything downstream (known-ID dispatch, unhandled-tap catch-all)
+        # is identical regardless of which shape it arrived in (#209).
+        if message_type == "button":
+            button = message.get("button", {})
+            button_id = button.get("payload", "")
+            if button_id:
                 self._handle_button_response(sender, button_id, message)
                 return
 
@@ -390,7 +406,13 @@ class WhatsAppWebhookView(View):
         elif button_id in ("currency_usd", "currency_zwg", "currency_zar"):
             handle_currency_clarification(sender=sender, button_id=button_id)
         else:
+            # No code-side handler for this button_id — most commonly a
+            # quick-reply button on a Meta-approved template (e.g.
+            # ats_reengagement) that isn't one of the interactive buttons we
+            # send ourselves above. Still record it as an engagement signal
+            # so the tap-followup check can catch the shop while warm (#209).
             logger.warning(f"Unknown button ID format: {button_id}")
+            handle_unhandled_button_tap(sender=sender)
 
     def _handle_text_message(self, message_id: str, sender: str, body: str) -> None:
         """Handle a text message."""

@@ -125,6 +125,18 @@ One discovery CTA of note: `discovery_photo_upload` surfaces the existing photo 
 
 **Zero-message shops:** A shop that was approved but has never sent any inbound message at all (not even to complete onboarding) gets `ats_zero_contact_followup` via `maybe_send_zero_contact_followup`, on the same capped day-2/5/7 pattern, then also stops in favor of human outreach (#149).
 
+**Tap follow-up (#209):** a tap is the highest-leverage re-engagement signal — the owner is
+demonstrably present right then. Any button tap with no dedicated handler (most commonly a
+quick-reply on a Meta-approved template like `ats_reengagement`, previously just logged and
+dropped) is recorded as `Company.last_unhandled_button_tap_at`. If the shop records no confirmed
+sale within 2 hours of the tap, `send_nudges` sends one soft plain-text follow-up ("Ready when you
+are — just send a sale like *2 Mazoe $3 each*..."). This runs on every 15-minute tick regardless of
+the daily send window and isn't blocked by another mechanism having already messaged the shop that
+day — both deliberate, since the tap is a one-off, time-sensitive event, not part of the daily
+drip those two gates are meant to pace. A fresh tap resets the follow-up flag so the window can
+reopen. Shops still tap-but-no-sale are also flagged in `pilot_audit` for a personal follow-up (see
+`docs/Architecture.md`).
+
 **Implementation:** `apps/whatsapp/services/nudge_service.py` + `send_nudges` management command.
 
 ## Read Receipts & Typing Indicator
