@@ -2,6 +2,8 @@
 greeting-as-company-name rejection (#256)."""
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from datetime import timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -17,12 +19,6 @@ from apps.whatsapp.services.waitlist_handler import (
 )
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 class ProcessNewWaitlistEntryAcknowledgmentTest(TransactionTestCase):

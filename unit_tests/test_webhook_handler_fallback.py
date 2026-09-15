@@ -20,6 +20,8 @@ Two distinct bugs, two distinct fixes, both in webhook_handler.py:
 """
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from unittest.mock import AsyncMock, Mock, patch
 
 import django.db.utils
@@ -31,12 +33,6 @@ from apps.whatsapp.services.message_parser import UnifiedMessageResult
 from apps.whatsapp.services.webhook_handler import _process_message_async, handle_incoming_message
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_profile(phone="+263771000199"):
@@ -80,12 +76,21 @@ class FallbackErrorOnDownstreamExceptionTest(TransactionTestCase):
         reproducing #284's exact failure mode on a DB blip that outlasts one retry."""
         send_mock = Mock()
         # run_async is a plain sync function (it manages the event loop internally),
-        # not a coroutine — must mock it with Mock, not AsyncMock.
-        # First call raises OperationalError (triggers the retry path), second call
-        # (the retry itself) raises a plain Exception.
-        run_async_mock = Mock(
-            side_effect=[django.db.utils.OperationalError("connection lost"), Exception("retry also failed")]
-        )
+        # not a coroutine — must mock it with Mock, not AsyncMock. First call raises
+        # OperationalError (triggers the retry path), second call (the retry) raises a
+        # plain Exception.
+        # coro.close() matters: the call site builds _process_message_async(...) eagerly,
+        # so a mock that raises instead of running it leaves an un-awaited coroutine and a
+        # "coroutine was never awaited" RuntimeWarning in the test output. The body never
+        # ran, so no DB connection was opened — this silences noise, it does not fix a
+        # leak. Same reason test_concurrent_message_safety.py closes it.
+        raises = iter([django.db.utils.OperationalError("connection lost"), Exception("retry also failed")])
+
+        def fake_run_async(coro):
+            coro.close()
+            raise next(raises)
+
+        run_async_mock = Mock(side_effect=fake_run_async)
         with (
             patch("apps.whatsapp.services.webhook_handler.run_async", new=run_async_mock),
             patch("apps.whatsapp.services.webhook_handler._send_fallback_error", new=send_mock),

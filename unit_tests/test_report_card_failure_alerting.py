@@ -9,6 +9,8 @@ generic exception, and a `company_id` tag so it's filterable per-shop.
 """
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 import datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -22,12 +24,6 @@ from apps.whatsapp.services.business_reports import BusinessSnapshot
 from apps.whatsapp.services.message_parser import UnifiedMessageResult
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_profile(phone="+263771000299"):

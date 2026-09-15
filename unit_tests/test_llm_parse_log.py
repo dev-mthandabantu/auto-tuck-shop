@@ -1,6 +1,8 @@
 """Unit tests for LlmParseLog creation via parse_message_unified."""
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from unittest.mock import AsyncMock, patch
 
 from django.test import TransactionTestCase
@@ -10,12 +12,6 @@ from apps.whatsapp.services.message_parser import parse_message_unified
 from services.openrouter.client import ParseJsonResult
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 class LlmParseLogSuccessTest(TransactionTestCase):

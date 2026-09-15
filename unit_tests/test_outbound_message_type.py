@@ -13,18 +13,14 @@ Run with:
 
 import asyncio
 
+from unit_tests.async_helpers import run_async_test as _run
+
 from django.test import TransactionTestCase
 
 from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.whatsapp_client import WhatsAppClient
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 class OutboundMessageTypeTest(TransactionTestCase):

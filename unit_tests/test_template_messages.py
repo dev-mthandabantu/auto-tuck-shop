@@ -1,6 +1,8 @@
 """Tests for template message wiring — send_daily_summary and approval_welcome."""
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
@@ -14,12 +16,6 @@ from apps.core.models import Company, UserProfile
 from apps.whatsapp.models import WhatsAppMessage
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _mock_client(send_template_mock=None, send_image_mock=None, send_message_mock=None):

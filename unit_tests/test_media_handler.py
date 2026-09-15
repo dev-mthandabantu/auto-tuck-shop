@@ -5,6 +5,8 @@ Vision LLM calls are mocked — these tests do not require OPENROUTER_API_KEY.
 """
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -15,12 +17,6 @@ from apps.whatsapp.services.message_parser import UnifiedMessageResult
 from apps.whatsapp.services.webhook_handler import _process_media_message_async
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_profile(phone="+263771000099"):

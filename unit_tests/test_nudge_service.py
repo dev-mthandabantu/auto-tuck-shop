@@ -1,6 +1,8 @@
 """Unit tests for the GTM drip nudge service."""
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -26,12 +28,6 @@ from apps.whatsapp.services.nudge_service import (
 )
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_company(name="Test Shop", first_message_date=None, last_nudge_date=None, nudge_stage=0):

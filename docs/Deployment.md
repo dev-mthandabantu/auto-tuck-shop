@@ -103,6 +103,20 @@ New migrations must be committed in the same PR as the schema change. Migrations
 
 `GET /healthz/` -- returns 200 when the app is up. Fly.io polls this every 30 seconds.
 
+## Unit Tests in CI
+
+`unit_tests/` runs on every PR and push to `main` (`.github/workflows/staging-tests.yml`, job
+`unit_tests`). The job starts a `postgres:16` service container -- SQLite is not usable here,
+because `apps/core/migrations/0012_drop_orphan_company_columns.py` uses `ALTER TABLE ... DROP
+COLUMN IF EXISTS`, which SQLite rejects at migrate time.
+
+Installs both `requirements.txt` and `requirements-dev.txt`: the former has no `pytest` (imported
+by `unit_tests/test_language_business_continuity.py`), the latter has no Django.
+
+The 22 tests in `unit_tests/test_shona_parsing.py` call the live LLM and skip automatically when
+`OPENROUTER_API_KEY` is absent, which is the case in CI. They are not enforced there -- run them
+locally with a key set when changing parsing behaviour.
+
 ## Integration Tests
 
 Tests in `tests/` run against the live staging app over HTTP -- no Django imports, no mocks. Require `.env.staging` with staging URL and API credentials.

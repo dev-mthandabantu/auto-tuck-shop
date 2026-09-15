@@ -10,6 +10,8 @@ Run with:
 import asyncio
 from decimal import Decimal
 
+from asgiref.sync import sync_to_async
+from django.db import connections
 from django.test import TestCase
 
 from apps.whatsapp.services.message_parser import parse_message_unified
@@ -18,13 +20,32 @@ from services.openrouter.client import OpenRouterError
 
 class ShonaParsingTestCase(TestCase):
 
-    def _parse(self, message):
+    @staticmethod
+    async def _parse_and_close(message):
+        """Parse, then close DB connections from inside asgiref's worker thread.
+
+        parse_message_unified reaches the ORM through @sync_to_async, which asgiref runs
+        in a persistent ThreadPoolExecutor thread. That thread gets its own Django
+        connection and outlives asyncio.run, so the session stays open in Postgres and
+        DROP DATABASE fails at teardown. connections.close_all() from the main thread
+        does not reach it — the close has to happen in the worker thread itself.
+        """
         try:
-            return asyncio.run(parse_message_unified(message))
+            return await parse_message_unified(message)
+        finally:
+            await sync_to_async(connections.close_all)()
+
+    def _parse(self, message):
+        # The connection is opened inside asyncio.run, before any skip below is raised,
+        # so the cleanup above runs even on the no-API-key path.
+        try:
+            return asyncio.run(self._parse_and_close(message))
         except Exception as e:
             if "401" in str(e) or "API request failed" in str(e) or "OpenRouter" in type(e).__name__:
                 self.skipTest(f"OpenRouter unavailable (no valid API key): {e}")
             raise
+        finally:
+            connections.close_all()
 
     # ------------------------------------------------------------------
     # imwe / imwe neimwe (per-unit price marker)

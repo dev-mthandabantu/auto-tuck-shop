@@ -1,7 +1,6 @@
 """Unit tests for the sale confirm/cancel flow — PENDING → CONFIRMED/CANCELLED,
 and the price write that happens at confirmation, not at parse time."""
 
-import asyncio
 import threading
 from decimal import Decimal
 
@@ -12,6 +11,7 @@ from apps.core.models import Company
 from apps.inventory.models import InventoryAdjustment
 from apps.sales.models import Sale, SaleItem
 from apps.whatsapp.services.sale_handler import _get_confirmed_sale, _get_and_update_sale
+from unit_tests.async_helpers import run_async_test
 
 
 def _make_company(name="Test Shop"):
@@ -42,7 +42,7 @@ class ConfirmSaleWritesPriceTest(TransactionTestCase):
     def test_confirm_writes_new_price(self):
         sale = _make_pending_sale(self.company, self.product, Decimal("2.00"))
 
-        result = asyncio.run(_get_confirmed_sale("sid_1"))
+        result = run_async_test(_get_confirmed_sale("sid_1"))
 
         self.assertIsNotNone(result)
         sale.refresh_from_db()
@@ -53,50 +53,64 @@ class ConfirmSaleWritesPriceTest(TransactionTestCase):
         ProductPrice.objects.create(product=self.product, price=Decimal("2.00"), currency="USD")
         _make_pending_sale(self.company, self.product, Decimal("2.00"))
 
-        asyncio.run(_get_confirmed_sale("sid_1"))
+        run_async_test(_get_confirmed_sale("sid_1"))
 
         self.assertEqual(ProductPrice.objects.filter(product=self.product).count(), 1)
 
     def test_confirm_on_unknown_sid_returns_none(self):
-        result = asyncio.run(_get_confirmed_sale("does_not_exist"))
+        result = run_async_test(_get_confirmed_sale("does_not_exist"))
         self.assertIsNone(result)
 
     def test_confirm_twice_second_call_returns_none(self):
         """Second 'Looks good' click on an already-confirmed sale should not
         re-match (sale is no longer PENDING) and must not write price again."""
         _make_pending_sale(self.company, self.product, Decimal("2.00"))
-        asyncio.run(_get_confirmed_sale("sid_1"))
+        run_async_test(_get_confirmed_sale("sid_1"))
 
-        result = asyncio.run(_get_confirmed_sale("sid_1"))
+        result = run_async_test(_get_confirmed_sale("sid_1"))
 
         self.assertIsNone(result)
         self.assertEqual(ProductPrice.objects.filter(product=self.product).count(), 1)
 
 
-class ConcurrentConfirmCancelRaceTest(TransactionTestCase):
-    """select_for_update() must prevent a 'Looks good' and 'Fix mistake'
-    tap on the same sale from both succeeding (flagged in code review on
-    #293's PR: without row locking, two concurrent reads can both observe
-    PENDING before either commits)."""
+class SequentialConfirmCancelTest(TransactionTestCase):
+    """A confirm and a cancel on the same sale must not both succeed — the second
+    must observe the transition made by the first and return None.
+
+    NOT a test of select_for_update()'s row locking, despite driving two threads.
+    Both paths go through @db_sync_to_async (sync_to_async with the default
+    thread_sensitive=True), so asgiref serialises them in its single-worker executor
+    and they never contend at the database. Verified by deleting select_for_update()
+    from sale_handler.py:100 and re-running: this test still passes.
+
+    What it does guard is the status-transition guard itself — the filter on
+    status=PENDING, and the price write happening only on the confirm path. Real
+    contention on the row lock would need to bypass db_sync_to_async to get two
+    genuinely concurrent transactions; tracked separately."""
 
     def setUp(self):
         self.company = _make_company()
         self.product = Product.objects.create(name="Apples", company=self.company)
 
-    def test_concurrent_confirm_and_cancel_only_one_wins(self):
+    def test_second_action_sees_the_first_and_does_not_also_succeed(self):
         _make_pending_sale(self.company, self.product, Decimal("2.00"))
 
         results = {}
         start_confirm = threading.Event()
         start_cancel = threading.Event()
 
+        # _get_confirmed_sale is @db_sync_to_async, i.e. sync_to_async with the default
+        # thread_sensitive=True, so the ORM work runs in asgiref's shared thread-sensitive
+        # executor — not in the thread spawned below. connections.close_all() called here
+        # would run in the spawned thread and could not see that connection. run_async_test
+        # closes it inside the executor itself, which is the only place it is reachable.
         def run_confirm():
             start_confirm.wait()
-            results["confirm"] = asyncio.run(_get_confirmed_sale("sid_1"))
+            results["confirm"] = run_async_test(_get_confirmed_sale("sid_1"))
 
         def run_cancel():
             start_cancel.wait()
-            results["cancel"] = asyncio.run(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
+            results["cancel"] = run_async_test(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
 
         t1 = threading.Thread(target=run_confirm)
         t2 = threading.Thread(target=run_cancel)
@@ -109,7 +123,9 @@ class ConcurrentConfirmCancelRaceTest(TransactionTestCase):
 
         # Exactly one of the two actions should have found the sale still
         # PENDING and succeeded; the other must see it's already been
-        # transitioned and return None — never both succeeding.
+        # transitioned and return None — never both succeeding. This holds
+        # because of the status=PENDING filter, not because of row locking
+        # (see the class docstring).
         succeeded = [r for r in results.values() if r is not None]
         self.assertEqual(
             len(succeeded), 1,
@@ -140,7 +156,7 @@ class RejectedSaleDoesNotWritePriceTest(TransactionTestCase):
     def test_fix_mistake_does_not_write_price(self):
         _make_pending_sale(self.company, self.product, Decimal("100.00"))
 
-        result = asyncio.run(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
+        result = run_async_test(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
 
         self.assertIsNotNone(result)
         self.assertEqual(self.product.current_price, Decimal("2.00"))
@@ -174,7 +190,7 @@ class RejectedSaleDoesNotWritePriceTest(TransactionTestCase):
         bad_sale.confirmation_message_sid = "sid_1"
         bad_sale.save(update_fields=["confirmation_message_sid"])
 
-        asyncio.run(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
+        run_async_test(_get_and_update_sale("sid_1", Sale.Status.CANCELLED))
 
         result = create_sale_from_parsed_items(
             items=[{"product_name": "Apples", "quantity": 1, "unit_price": None, "currency": None}],

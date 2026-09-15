@@ -1,6 +1,8 @@
 """Unit tests for the closing time button handler."""
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from datetime import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,12 +13,6 @@ from apps.core.models import Company, UserProfile
 from apps.whatsapp.services.webhook_handler import _handle_closing_time_button_async
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_company(name="Test Shop"):

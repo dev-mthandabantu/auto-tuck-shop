@@ -8,6 +8,8 @@ Run with:
 
 import asyncio
 
+from unit_tests.async_helpers import run_async_test as _run
+
 from django.contrib.auth.models import User
 from django.test import TransactionTestCase
 
@@ -16,12 +18,6 @@ from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.waitlist_handler import _create_assistant
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_company(name="Test Shop", slug="test-shop-assistant-backfill", first_message_date=None):

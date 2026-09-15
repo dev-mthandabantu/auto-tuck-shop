@@ -15,6 +15,8 @@ Run with:
 """
 
 import asyncio
+
+from unit_tests.async_helpers import run_async_test as _run
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -26,12 +28,6 @@ from apps.whatsapp.services.sale_handler import process_sale_message_unified
 from apps.whatsapp.services.message_parser import UnifiedMessageResult
 
 
-def _run(coro):
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
 
 
 def _make_company(slug="test-shop-confirm-locale"):
