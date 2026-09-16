@@ -134,9 +134,10 @@ author could have found alone.
 
 **Before opening the PR:**
 
-- **Run the tests** — `python manage.py test unit_tests`. CI runs only `test_localizations`, so a
-  green check proves nothing about your change. If you can't run them, say so in the PR rather
-  than claiming a pass.
+- **Run the tests** — `python manage.py test unit_tests`. CI runs this suite against PostgreSQL,
+  but local isolation and mutation checks can still catch order-dependent or tautological tests
+  that an aggregate green job misses. If you can't run it locally, say so in the PR rather than
+  claiming a local pass.
 - **For each test you added, ask what would still pass if the feature were deleted.** A test that
   passes with the code removed is testing nothing — a real finding here more than once.
 - **Check every claim in your PR body and docs against the code as written.** Off-by-one in a
