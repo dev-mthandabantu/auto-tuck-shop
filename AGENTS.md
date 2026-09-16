@@ -61,7 +61,15 @@ Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or vo
 
 ## Current phase
 
-**Pilot active — production live since 2026-05-25.** Bot is receiving/replying to real WhatsApp messages on production.
+**Pilot paused since 2026-08-03 — production still live, outbound messaging off.** Don't read this as "pilot active": the distinction changes what work is worth doing.
+
+- **Inbound works.** Production has been live since 2026-05-25. Any shop that messages the bot still gets a full response — parsing, sale recording, confirmations.
+- **Outbound is off.** The nudge cron was deliberately paused (#278). In practice the whole cron machine was stopped, so `send_daily_reports` has also been off since 3 Aug — that part was *not* intended (see the known gap in #335).
+- **No new cohort is being onboarded.** Don't approve new shop applications until the next cohort is intentionally ready.
+
+**Restart is gated on three conditions from #278**, none currently met: funding secured, bandwidth to follow up on re-engagement, and a cohort intentionally ready. Restart checklist and review date live in **#335** (review not before 1 Oct 2026).
+
+**Before the restart, #351 should land** — whether sales-recording is the right wedge at all, or whether the real pain is debt/stock/profit. Restarting into the wrong wedge spends the only real cohort we have.
 
 Open items: GitHub project board, not here. Match any task to an open issue; check with the user first if it doesn't map to one.
 
@@ -98,7 +106,15 @@ there to sync to (see #36).
 
 ## Scope rule
 
-Production is live. A change that doesn't support the 20-shop pilot or fix a real issue belongs in the backlog.
+Production is live and takes real inbound messages, so anything that breaks the bot for a shop that messages it is still urgent.
+
+But the pilot is paused (see "Current phase"), and that changes what else is worth doing. With no live cohort, new user-facing behaviour has nobody to reach — it accumulates as inventory rather than shipping. Work that *does* earn its place right now:
+
+- Fixes to inbound handling — a shop that messages the bot must get a correct response.
+- Anything gating the restart (#335) or the wedge question (#351).
+- Test integrity and CI (#367, #82) — the suite protects a codebase two people are shipping into, and most of it doesn't run.
+
+New features for a cohort that isn't running belong in the backlog until the restart date is real.
 
 ## Keeping the backlog current
 
