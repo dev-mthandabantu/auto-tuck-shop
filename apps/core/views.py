@@ -81,7 +81,11 @@ def pilot_metrics(request):
                 "sales",
                 filter=Q(
                     sales__sale_timestamp__gte=since,
-                    sales__status=Sale.Status.CONFIRMED,
+                    # "Fix mistake" cancels and flags the sale in one write
+                    # (sale_handler._get_and_update_sale), so a flagged sale is
+                    # CANCELLED, never CONFIRMED. Requiring CONFIRMED here made
+                    # this count structurally 0 (#378).
+                    sales__status=Sale.Status.CANCELLED,
                     sales__flagged_as_bot_mistake=True,
                 ),
                 distinct=True,

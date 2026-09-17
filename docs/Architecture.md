@@ -27,7 +27,7 @@
 ### Sale
 - `company`, `user_profile`, `message_id`, `status` (pending/confirmed/cancelled)
 - `total_amount`, `currency`, `sale_timestamp`
-- `was_bot_mistake` (bool) — set when owner presses "Fix mistake"
+- `flagged_as_bot_mistake` (bool) — set when owner presses "Fix mistake"
 
 ### SaleItem
 - `sale`, `product` (FK), `quantity`, `unit_price`, `total_price`, `currency`
@@ -112,7 +112,7 @@ Sale created with status=pending
 Bot sends confirmation summary + buttons ("Looks good" / "Fix mistake")
     |
     +-- "Looks good" -> sale.status = confirmed
-    +-- "Fix mistake" -> sale.status = cancelled, was_bot_mistake = True
+    +-- "Fix mistake" -> sale.status = cancelled, flagged_as_bot_mistake = True
 ```
 
 ## Daily Reports Flow
