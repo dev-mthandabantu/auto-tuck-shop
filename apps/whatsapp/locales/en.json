@@ -112,7 +112,8 @@
     },
     "other": {
         "deferral": "No problem — I will be here when you are ready. Just send what you sold and I will record it.",
-        "question": "I am set up for recording sales right now. To record a sale, just send something like: *2 Mazoe $3 each*"
+        "question": "I am set up for recording sales right now. To record a sale, just send something like: *2 Mazoe $3 each*",
+        "greeting_acknowledged": "Hi! I'm here and ready. Just send what you sold, e.g. *2 Mazoe $3 each*, and I'll record it for you."
     },
     "help": {
         "menu": "I can help you with:\n\n*Record a sale*\nJust tell me what you sold, e.g. 2 Mazoe $3 each\n\n*Check your sales*\nAsk me how much did I make today?\n\n*Add or remove an assistant*\nE.g. add assistant +2637812345678 or remove assistant +2637812345678\n\n*Switch language*\nSay switch to Shona or switch to English\n\n*Contact support*\nCall or WhatsApp us on {support_phone}\n\nJust send what you sold anytime and I'll record it."

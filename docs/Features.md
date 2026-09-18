@@ -92,6 +92,12 @@ Owners can ask what the bot can do at any time. Two ways in:
 
 The reply is plain text (not interactive buttons) listing: record a sale, check sales, add/remove an assistant, switch language, and contact support. The support number comes from the `SUPPORT_PHONE_NUMBER` env var, not hardcoded.
 
+## Greetings
+
+A bare greeting or filler message ("hi", "thanks", "ok", a thumbs-up emoji) always gets a short reply (`other.greeting_acknowledged` locale key) confirming the bot is working and inviting the owner to send a sale — see #382. Originally (#284) these were fully silent for every sender, reasoned as avoiding reply-noise for owners already using the bot daily; #382 reversed that, since silence is indistinguishable from a broken bot from the shop owner's side, and judged that tradeoff worse than a short repeated acknowledgement. A greeting the LLM mis-labels (real text that isn't a recognised filler word/emoji) still falls through to `other.deferral` instead, per the code-level backstop from #284 — see `_is_silent_greeting` in `webhook_handler.py`.
+
+A brand-new, not-yet-approved number is unaffected by any of this — that flow is handled separately by `handle_new_waitlist_entry`, which already replies with language selection regardless.
+
 **Implementation:** `apps/whatsapp/services/webhook_handler.py::_process_message_async`, locale key `help.menu` in `en.json`/`sn.json`.
 
 ## Onboarding and Waitlist
@@ -143,7 +149,7 @@ reopen. Shops still tap-but-no-sale are also flagged in `pilot_audit` for a pers
 
 **Blue ticks:** The bot marks every inbound message as read via the Meta Cloud API (`mark_as_read`) immediately on receipt. Controlled by `ENABLE_WHATSAPP_MARK_AS_READ` setting.
 
-**Typing indicator:** While the LLM is processing, the bot sends a typing indicator so the shop owner sees `...typing`. Uses Meta Cloud API v21 format (`type: typing_indicator`) — auto-expires after 25s or when the reply is sent. The indicator is suppressed for short acknowledgements (greetings, "ok", "thanks", etc.) that produce no reply, so users don't see typing appear and disappear with no response.
+**Typing indicator:** While the LLM is processing, the bot sends a typing indicator so the shop owner sees `...typing`. Uses Meta Cloud API v21 format (`type: typing_indicator`) — auto-expires after 25s or when the reply is sent. Fires for every inbound message, including short acknowledgements (greetings, "ok", "thanks", etc.) — see below, these now always get a reply too, so the indicator correctly reflects that one is coming.
 
 ## Admin Panel
 

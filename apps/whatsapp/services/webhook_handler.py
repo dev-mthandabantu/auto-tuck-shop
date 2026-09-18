@@ -503,15 +503,19 @@ async def _process_message_async(
         lang = user_profile.language if user_profile else DEFAULT_LANGUAGE
 
         # Send typing indicator while LLM processes the message (if supported).
-        # Skip for short acknowledgements — they produce no reply and the typing flicker is confusing.
         #
-        # This same pattern also gates whether an "other/greeting"-classified message stays
-        # silent (see below) — a code-level backstop in case the LLM ever mis-classifies
-        # something as "greeting" despite the prompt's guidance. Must cover every example
-        # services/openrouter/prompts.py's "greeting" sub-intent trains the LLM on ("hi",
-        # "okay", "thanks", "good morning", "👍", "🙏", "❤️", "✅"), or a real greeting the
-        # LLM correctly classifies could still fall through to other.deferral and get an
-        # unwanted reply. Keep this in sync with the prompt's example list.
+        # _is_silent_greeting also identifies which "other/greeting"-classified messages
+        # get a reply below (see #382) — a code-level backstop in case the LLM ever
+        # mis-classifies something as "greeting" despite the prompt's guidance. Must
+        # cover every example services/openrouter/prompts.py's "greeting" sub-intent
+        # trains the LLM on ("hi", "okay", "thanks", "good morning", "👍", "🙏", "❤️",
+        # "✅"), or a real greeting the LLM correctly classifies could fall through to
+        # other.deferral instead of the shorter greeting_acknowledged reply. Keep this
+        # in sync with the prompt's example list.
+        #
+        # Greetings now always get a reply (#382, reversing #284's silence-for-everyone
+        # default) — the typing indicator fires for them the same as any other message
+        # that produces a response, matching what the shop owner actually sees.
         _SILENT_PATTERN = re.compile(
             r"^\s*("
             r"(good\s+)?(morning|afternoon|evening|night)|"
@@ -546,7 +550,7 @@ async def _process_message_async(
             return bool(re.search(r"\d", candidate)) and bool(_SALE_SHAPED_PATTERN.search(candidate))
 
         _typing_sent = False
-        if settings.ENABLE_WHATSAPP_TYPING and not _is_silent_greeting(text):
+        if settings.ENABLE_WHATSAPP_TYPING:
             try:
                 client = get_whatsapp_client()
                 try:
@@ -678,11 +682,22 @@ async def _process_message_async(
         if result.intent == "other":
             sub = result.other_sub_intent
             # The prompt guides the LLM to classify reactive emoji/fillers as "greeting" —
-            # but as a code-level backstop against misclassification, only actually stay
-            # silent when the raw text itself matches the recognised filler/emoji pattern,
-            # never on the LLM label alone (see #284).
+            # as a code-level backstop against misclassification, this only actually
+            # treats it as a greeting when the raw text itself matches the recognised
+            # filler/emoji pattern, never on the LLM label alone (see #284).
+            #
+            # #284 originally made this fully silent for every sender ("replying to
+            # hi/thanks adds noise"). #382 revisited that: an already-approved owner
+            # gets no confirmation their message even reached a working bot, which is
+            # indistinguishable from the bot being broken. A brand-new number never
+            # reaches this branch at all — that flow is handled separately by
+            # handle_new_waitlist_entry, which already replies with language selection.
+            # Decision (per #382): reply to every greeting from an approved owner, not
+            # just after a silence window — simpler, and deliberately accepts the
+            # repeated-reply tradeoff #284 was avoiding, since a short one-line
+            # acknowledgement is judged less noisy than potential dead-bot confusion.
             if sub == "greeting" and _is_silent_greeting(text):
-                pass  # No response — replying to "hi" / "thanks" adds noise
+                await _send_response(sender, t("other.greeting_acknowledged", lang=lang))
             elif sub == "question":
                 await _send_response(sender, t("help.menu", lang=lang, support_phone=settings.SUPPORT_PHONE_NUMBER))
             else:  # deferral, unknown, or a "greeting" that wasn't a recognised filler word

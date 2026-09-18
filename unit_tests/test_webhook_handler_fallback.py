@@ -30,7 +30,7 @@ from django.test import TransactionTestCase
 
 from apps.core.models import Company, UserProfile
 from apps.whatsapp.services.message_parser import UnifiedMessageResult
-from apps.whatsapp.services.webhook_handler import _process_message_async, handle_incoming_message
+from apps.whatsapp.services.webhook_handler import _process_message_async, handle_incoming_message, t
 
 
 
@@ -101,7 +101,12 @@ class FallbackErrorOnDownstreamExceptionTest(TransactionTestCase):
 
 
 class GreetingSilenceGateTest(TransactionTestCase):
-    """Only recognised filler words/emoji may stay silent — not every LLM 'greeting' label."""
+    """#284 originally kept every recognised filler word/emoji silent for every sender.
+    #382 reversed that default: an already-approved shop owner now gets a short
+    greeting_acknowledged reply instead of silence, since silence is indistinguishable
+    from a broken bot from the owner's side. The classification gate itself (only
+    treating recognised filler words/emoji as "greeting", not every LLM label) is
+    unchanged — only what happens once something IS classified as a real greeting."""
 
     def setUp(self):
         self.profile = _make_profile(phone="+263771000299")
@@ -117,42 +122,63 @@ class GreetingSilenceGateTest(TransactionTestCase):
             _run(_process_message_async("msg", self.sender, text, self.profile))
         return send_mock
 
-    def test_recognised_filler_word_stays_silent(self):
-        """Real filler acknowledgements ('hi', 'thanks', 'ok') keep the original no-reply behaviour."""
+    def test_recognised_filler_word_gets_greeting_reply(self):
+        """Real filler acknowledgements ('hi', 'thanks', 'ok') now get the specific
+        greeting_acknowledged reply (#382), not silence and not other.deferral —
+        asserting exact message content, not just that something was sent, since
+        both replies would otherwise satisfy a looser assertion equally."""
         send_mock = self._run_other_greeting("hi")
-        send_mock.assert_not_called()
+        send_mock.assert_called_once()
+        args, _ = send_mock.call_args
+        self.assertEqual(args[0], self.sender)
+        self.assertEqual(args[1], t("other.greeting_acknowledged", lang=self.profile.language))
 
-    def test_llm_prompt_greeting_examples_stay_silent(self):
+    def test_llm_prompt_greeting_examples_get_greeting_reply(self):
         """services/openrouter/prompts.py explicitly trains the LLM's "greeting" sub-intent
         on "hi", "okay", "thanks", "good morning", "👍", "🙏", "❤️", and "✅" — every one of
-        those must still produce no reply, or the LLM correctly classifying a real greeting
-        still results in an unwanted reply."""
+        those must be recognised by the classification gate and produce the specific
+        greeting_acknowledged reply (#382), not fall through to other.deferral."""
+        expected = t("other.greeting_acknowledged", lang=self.profile.language)
         for example in ("hi", "okay", "thanks", "good morning", "\U0001F44D", "\U0001F64F", "❤️", "✅"):
             with self.subTest(example=example):
                 send_mock = self._run_other_greeting(example)
-                send_mock.assert_not_called()
+                send_mock.assert_called_once()
+                args, _ = send_mock.call_args
+                self.assertEqual(args[1], expected)
 
-    def test_multi_word_and_repeated_emoji_greetings_stay_silent(self):
+    def test_multi_word_and_repeated_emoji_greetings_get_greeting_reply(self):
         """Not just the LLM prompt's exact examples — nearby real-world phrasing a shop
-        owner would plausibly send."""
+        owner would plausibly send, still classified as a recognised greeting and
+        replied to with the specific greeting_acknowledged message (#382), not silenced."""
+        expected = t("other.greeting_acknowledged", lang=self.profile.language)
         for example in ("thanks so much!", "thank you very much", "mangwanani", "\U0001F44D\U0001F44D"):
             with self.subTest(example=example):
                 send_mock = self._run_other_greeting(example)
-                send_mock.assert_not_called()
+                send_mock.assert_called_once()
+                args, _ = send_mock.call_args
+                self.assertEqual(args[1], expected)
 
-    def test_unrecognised_greeting_falls_through_to_reply(self):
+    def test_unrecognised_greeting_falls_through_to_deferral_reply(self):
         """If the LLM classifies something as "greeting" that ISN'T a recognised filler
-        word/emoji, the code-level backstop must still produce a reply rather than trust
-        the label blindly — this is the actual #284 regression this gate protects against."""
+        word/emoji, the code-level backstop must still route it to other.deferral rather
+        than the shorter greeting_acknowledged reply or trusting the label blindly —
+        this is the actual #284 regression this gate protects against. Both paths reply
+        now (#382), but they must remain distinct messages for distinct situations —
+        asserted here by checking the deferral text specifically, not just call count."""
         send_mock = self._run_other_greeting("switch to Shona")
         send_mock.assert_called_once()
+        args, _ = send_mock.call_args
+        self.assertEqual(args[1], t("other.deferral", lang=self.profile.language))
 
     def test_non_greeting_emoji_combination_still_replies(self):
         """An emoji combination that isn't a plausible plain greeting/reaction should still
-        fall through to a reply — the emoji-only silence gate must not swallow everything
-        containing an emoji, only messages that are ENTIRELY emoji/whitespace."""
+        fall through to other.deferral, not the greeting_acknowledged reply — the
+        emoji-only silence gate must not swallow everything containing an emoji, only
+        messages that are ENTIRELY emoji/whitespace."""
         send_mock = self._run_other_greeting("\U0001F44D see attached")
         send_mock.assert_called_once()
+        args, _ = send_mock.call_args
+        self.assertEqual(args[1], t("other.deferral", lang=self.profile.language))
 
 
 class HelpMenuTest(TransactionTestCase):
