@@ -5,13 +5,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Auto Tuck Shop{% endblock %}</title>
-  <meta name="description" content="{% block description %}Auto Tuck Shop helps tuck shops record sales through WhatsApp text and voice messages.{% endblock %}">
-  <meta name="theme-color" content="#174d38">
+  <meta name="description" content="{% block description %}Auto Tuck Shop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
+  <meta name="theme-color" content="#123c2d">
   <link rel="icon" type="image/png" href="{% static 'auto_tuck_shop/img/app-icon.png' %}">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Auto Tuck Shop">
   <meta property="og:title" content="{% block og_title %}Auto Tuck Shop{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Auto Tuck Shop helps tuck shops record sales through WhatsApp text and voice messages.{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Auto Tuck Shop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
   <meta property="og:image" content="{% block og_image %}{% static 'auto_tuck_shop/img/app-icon.png' %}{% endblock %}">
   <link rel="stylesheet" href="{% static 'auto_tuck_shop/css/public.css' %}">
 </head>
@@ -24,11 +25,13 @@
           <span>Auto Tuck Shop</span>
         </a>
         <div class="nav-links">
+          <a href="{% url 'home' %}#product">Product</a>
           <a href="{% url 'home' %}#how-it-works">How it works</a>
+          <a href="{% url 'home' %}#trust">Trust</a>
+          <a href="{% url 'home' %}#story">Story</a>
           <a href="{% url 'home' %}#team">Team</a>
           <a href="{% url 'privacy' %}">Privacy</a>
-          <a href="{% url 'terms' %}">Terms</a>
-          <a class="button secondary" href="{% url 'data_deletion' %}">Data deletion</a>
+          <a class="button secondary" href="{% url 'data_deletion' %}">Delete data</a>
         </div>
       </nav>
     </header>
@@ -41,7 +44,7 @@
       <div class="footer-inner">
         <div>
           <strong>Auto Tuck Shop</strong>
-          <div>WhatsApp sales tracking for tuck shops in Zimbabwe.</div>
+          <div>Your shop memory on WhatsApp.</div>
         </div>
         <div class="footer-links">
           <a href="{% url 'privacy' %}">Privacy</a>

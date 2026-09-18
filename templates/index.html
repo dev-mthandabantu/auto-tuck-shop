@@ -1,122 +1,236 @@
 {% extends "public/base.html" %}
 {% load static %}
 
-{% block title %}Auto Tuck Shop | WhatsApp sales tracking for tuck shops{% endblock %}
-{% block description %}Auto Tuck Shop helps tuck shop owners in Zimbabwe record sales, voice notes, and daily activity through WhatsApp.{% endblock %}
-{% block og_title %}Auto Tuck Shop | WhatsApp sales tracking for tuck shops{% endblock %}
-{% block og_description %}Auto Tuck Shop helps tuck shop owners in Zimbabwe record sales, voice notes, and daily activity through WhatsApp.{% endblock %}
+{% block title %}Auto Tuck Shop | Your shop memory on WhatsApp{% endblock %}
+{% block description %}Auto Tuck Shop helps Zimbabwean tuck shops record sales, voice notes, and daily reports through WhatsApp - no new app, no hardware, no spreadsheet.{% endblock %}
+{% block og_title %}Auto Tuck Shop | Your shop memory on WhatsApp{% endblock %}
+{% block og_description %}Send a WhatsApp. Confirm the sale. Get a daily report. Auto Tuck Shop turns ordinary shop messages into useful business records.{% endblock %}
+{% block og_image %}{% static 'auto_tuck_shop/img/marketing-demo-report.png' %}{% endblock %}
 
 {% block content %}
-<section class="hero">
+<section class="hero" id="product">
+  <div class="hero-pattern" aria-hidden="true"></div>
   <div class="hero-inner">
     <div class="hero-copy">
-      <p class="eyebrow">Built for everyday shopkeeping</p>
-      <h1>Record tuck shop sales from WhatsApp.</h1>
+      <p class="eyebrow">Your shop memory on WhatsApp</p>
+      <h1>Send a WhatsApp. Confirm the sale. Get the report.</h1>
       <p class="lead">
-        Auto Tuck Shop turns simple text and voice messages into sales records, so shop owners can keep trading without stopping to fill in spreadsheets or install another app.
+        Auto Tuck Shop records tuck shop sales from simple text, voice notes, Shona or English. No new app, no hardware, no spreadsheet at the counter.
       </p>
       <div class="hero-actions">
-        <a class="button" href="https://wa.me/263719550572?text=Hi" target="_blank" rel="noopener">Message us on WhatsApp</a>
+        <a class="button" href="https://wa.me/263719550572?text=Hi%20Auto%20Tuck%20Shop" target="_blank" rel="noopener">Message us on WhatsApp</a>
         <a class="button secondary" href="#how-it-works">See how it works</a>
+      </div>
+      <div class="hero-proof" aria-label="Pilot proof">
+        <span><strong>Live since May 2026</strong> with real pilot shops</span>
+        <span><strong>20-shop pilot</strong> in Zimbabwe</span>
       </div>
     </div>
 
-    <div class="hero-visual" aria-label="Tuck shop and WhatsApp sales chat illustration">
-      <div class="shop-scene">
-        <div class="shop-building">
-          <div class="shop-awning" aria-hidden="true">
-            <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    <div class="hero-visual" aria-label="Example Auto Tuck Shop WhatsApp product flow">
+      <div class="phone-shell phone-hero">
+        <div class="phone-status"><span>9:41</span><span>LTE 84%</span></div>
+        <div class="wa-header">
+          <div class="wa-avatar">A</div>
+          <div>
+            <strong>Auto Tuck Shop</strong>
+            <span>online</span>
           </div>
-          <div class="shop-door"></div>
-          <div class="shop-window" aria-hidden="true"><span></span><span></span><span></span></div>
         </div>
-        <img class="app-icon" src="{% static 'auto_tuck_shop/img/app-icon.png' %}" alt="Auto Tuck Shop app icon">
+        <div class="wa-body">
+          <div class="wa-day">Today</div>
+          <div class="wa-message sent">
+            <p>Ndakatengesa 3 bread $1 each ne 6 freezits 50c</p>
+            <span>6:18 PM</span>
+          </div>
+          <div class="wa-message received">
+            <p><strong>Sale found</strong><br>3 x bread @ $1<br>6 x freezits @ $0.50<br><br>Total: $6.00</p>
+            <span>6:18 PM</span>
+          </div>
+          <div class="wa-buttons">
+            <span>Looks good</span>
+            <span>Fix mistake</span>
+          </div>
+          <div class="wa-message received small">
+            <p>Great, sale recorded. Your daily summary will come after closing.</p>
+            <span>6:19 PM</span>
+          </div>
+        </div>
+        <div class="wa-input"><span>Message</span><i></i></div>
       </div>
 
-      <div class="phone-demo" aria-label="Example WhatsApp sales conversation">
-        <div class="phone-top">
-          <div class="phone-avatar"></div>
-          <strong>Auto Tuck Shop</strong>
-        </div>
-        <div class="phone-body">
-          <div class="bubble sent">Sold 2 cokes $1 each and 1 bread $1.20</div>
-          <div class="bubble received">Recorded: 2 cokes, 1 bread. Total: $3.20</div>
-          <div class="bubble received">Your daily report is ready when you need it.</div>
-        </div>
+      <div class="report-float">
+        <img src="{% static 'auto_tuck_shop/img/marketing-demo-report.png' %}" alt="Demo Auto Tuck Shop daily report card with fabricated sales data">
       </div>
     </div>
   </div>
 </section>
 
-<section class="sections">
-  <div class="section-heading">
-    <h2>Made for the way small shops already work.</h2>
-    <p>Owners and assistants can send sales in natural language, including voice notes. Auto Tuck Shop handles the structure behind the scenes.</p>
+<section class="sections intro-strip" aria-label="What Auto Tuck Shop does">
+  <div class="strip-card">
+    <strong>No app</strong>
+    <span>Owners stay inside WhatsApp.</span>
   </div>
-  <div class="feature-grid">
-    <article class="feature">
-      <h3>No new app to learn</h3>
-      <p>Use WhatsApp, the tool shop teams already have open during the day.</p>
-    </article>
-    <article class="feature">
-      <h3>Text or voice</h3>
-      <p>Type a quick sale or send a voice note when the counter is busy.</p>
-    </article>
-    <article class="feature">
-      <h3>Useful records</h3>
-      <p>Keep a clearer record of sales, products, and daily activity across the shop.</p>
-    </article>
+  <div class="strip-card">
+    <strong>Text or voice</strong>
+    <span>English, Shona, or both.</span>
+  </div>
+  <div class="strip-card">
+    <strong>Daily report</strong>
+    <span>Useful numbers at closing time.</span>
   </div>
 </section>
 
 <section class="sections" id="how-it-works">
   <div class="section-heading">
-    <h2>From message to sales record.</h2>
-    <p>A simple workflow for everyday transactions, built around WhatsApp messages and confirmations.</p>
+    <p class="eyebrow">How it works</p>
+    <h2>Built for a busy counter, not a quiet office.</h2>
+    <p>Each sale starts as an ordinary WhatsApp message. Auto Tuck Shop turns it into a confirmed record and sends back the numbers the shop can use.</p>
   </div>
   <div class="workflow">
     <article class="step">
       <div class="step-number">1</div>
-      <h3>Send the sale</h3>
-      <p>The shop owner or assistant sends a WhatsApp text or voice note with what was sold.</p>
+      <h3>Send what was sold</h3>
+      <p>Type it, say it as a voice note, or mix Shona and English the way you normally speak.</p>
     </article>
     <article class="step">
       <div class="step-number">2</div>
-      <h3>Auto Tuck Shop records it</h3>
-      <p>The bot reads the message, identifies products and quantities, and creates the sales record.</p>
+      <h3>Check the confirmation</h3>
+      <p>The bot replies with items, quantities and totals before the sale becomes a confirmed record.</p>
     </article>
     <article class="step">
       <div class="step-number">3</div>
-      <h3>Confirm and review</h3>
-      <p>The shop gets a confirmation message and can review activity through reports and admin tools.</p>
+      <h3>Use the report</h3>
+      <p>Ask for today, this week or this month, and get a clear summary back on WhatsApp.</p>
+    </article>
+  </div>
+</section>
+
+<section class="product-proof">
+  <div class="sections proof-grid">
+    <div class="proof-copy">
+      <p class="eyebrow">Product proof</p>
+      <h2>The thing owners actually receive.</h2>
+      <p>
+        The report card is a real Auto Tuck Shop output generated from the same renderer used by the bot. The numbers here are demo data for a fictional shop.
+      </p>
+      <div class="proof-list">
+        <span>Sales count</span>
+        <span>Weekly revenue</span>
+        <span>Top sellers</span>
+        <span>Best day</span>
+      </div>
+    </div>
+    <div class="report-showcase">
+      <img src="{% static 'auto_tuck_shop/img/marketing-demo-report.png' %}" alt="Demo Auto Tuck Shop report card generated from fabricated sales data">
+    </div>
+  </div>
+</section>
+
+<section class="sections" id="trust">
+  <div class="section-heading">
+    <p class="eyebrow">Trust</p>
+    <h2>Your records are for running your shop.</h2>
+    <p>Shop owners have asked directly about privacy, ZIMRA and who can see their numbers. The answer has to be plain.</p>
+  </div>
+  <div class="trust-grid">
+    <article class="trust-card highlight">
+      <h3>Not FDMS. Not connected to ZIMRA.</h3>
+      <p>Auto Tuck Shop is not a fiscalisation system and does not report sales to ZIMRA in real time.</p>
+    </article>
+    <article class="trust-card">
+      <h3>We do not proactively share records</h3>
+      <p>Your sales records are not sold, advertised with, or sent to tax authorities as a routine feed.</p>
+    </article>
+    <article class="trust-card">
+      <h3>Like a notebook, but easier</h3>
+      <p>Records are self-reported by the shop. They reflect what was typed or said, not bank or POS data.</p>
+    </article>
+    <article class="trust-card">
+      <h3>Support access is limited</h3>
+      <p>Auto Tuck Shop staff can see records only to run, debug and support the service.</p>
+    </article>
+    <article class="trust-card">
+      <h3>You can ask us to delete it</h3>
+      <p>Owners can request deletion of shop data connected to their phone number or shop.</p>
+    </article>
+    <article class="trust-card shona">
+      <h3>Muchidimbu</h3>
+      <p>Hatitumiri sales enyu kuZIMRA. Munotumira zvamatengesa kuti zvikubatsirei kuona zviri kuitika mushop.</p>
     </article>
   </div>
 </section>
 
 <section class="shop-quote-band">
   <div class="sections">
+    <div class="section-heading compact">
+      <p class="eyebrow">Field signals</p>
+      <h2>What the pilot is teaching us.</h2>
+    </div>
     <div class="quote-grid">
       <div class="quote-card">
         <div class="shop-quote-mark" aria-hidden="true">&ldquo;</div>
         <blockquote class="shop-quote">
           <p>I just send a WhatsApp message and my sales are recorded. Simple.</p>
-          <footer class="shop-quote-attr">— Mai Ati, tuck shop owner, Rimbi, Chipinge</footer>
+          <footer class="shop-quote-attr">Pilot shop owner</footer>
         </blockquote>
       </div>
       <div class="quote-card">
         <div class="shop-quote-mark" aria-hidden="true">&ldquo;</div>
         <blockquote class="shop-quote">
-          <p>Ini ndinotumira message imwe chete — inoita zvose. Handichatonyori mu book nekuti rinogona kurasika kana kubvaruka.</p>
-          <footer class="shop-quote-attr">— Mtetwa shop, Malipati, Chiredzi</footer>
+          <p>Ini ndinotumira message imwe chete. Handichatonyori mu book rinogona kurasika.</p>
+          <footer class="shop-quote-attr">Pilot shop in southern Zimbabwe</footer>
         </blockquote>
       </div>
       <div class="quote-card">
         <div class="shop-quote-mark" aria-hidden="true">&ldquo;</div>
         <blockquote class="shop-quote">
           <p>Even my assistant can record sales from their phone. We both see the same numbers.</p>
-          <footer class="shop-quote-attr">— Chibuwe shop, Chipinge</footer>
+          <footer class="shop-quote-attr">Pilot shop team</footer>
         </blockquote>
       </div>
+    </div>
+  </div>
+</section>
+
+<section class="story-band" id="story">
+  <div class="story-grid sections">
+    <div>
+      <p class="eyebrow">The bigger story</p>
+      <h2>Every recorded sale is a row in a financial history that did not exist before.</h2>
+      <p>
+        Informal retailers are economically active, but many remain invisible to lenders, insurers and supplier-credit systems. Auto Tuck Shop starts with the simplest wedge: help the owner remember what happened today.
+      </p>
+    </div>
+    <div class="thesis-flow">
+      <article>
+        <span>Month 1</span>
+        <strong>Daily sales records</strong>
+        <p>Voice and text messages become confirmed transactions.</p>
+      </article>
+      <article>
+        <span>Month 6</span>
+        <strong>Cash-flow footprint</strong>
+        <p>Patterns emerge across revenue, products and returning behavior.</p>
+      </article>
+      <article>
+        <span>Future</span>
+        <strong>Financial access</strong>
+        <p>Better records can support credit, insurance and supplier finance.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="sections founder-panel">
+  <div class="founder-card">
+    <img src="{% static 'auto_tuck_shop/img/team-madrena.jpg' %}" alt="Madrena Tandabantu">
+    <div>
+      <p class="eyebrow">Founder proof</p>
+      <h2>Built close to the problem.</h2>
+      <p>
+        Madrena Tandabantu grew up in rural Chipinge, ran a small tuck shop herself, taught herself programming, and now ships production code for the same kind of shopkeeping reality Auto Tuck Shop serves.
+      </p>
     </div>
   </div>
 </section>
@@ -124,8 +238,8 @@
 <section class="sections" id="team">
   <div class="section-heading">
     <p class="eyebrow">The team</p>
-    <h2>Built by people who care about this.</h2>
-    <p>We're a small team from Zimbabwe building tools for the businesses that keep communities running. Auto Tuck Shop is built by <a href="https://aakitech.com" target="_blank" rel="noopener">AakiTech</a> — we build practical software for African small businesses.</p>
+    <h2>Built by people who know the route from field reality to working software.</h2>
+    <p>Auto Tuck Shop is built by <a href="https://aakitech.com" target="_blank" rel="noopener">AakiTech</a>, a Zimbabwean team building practical software for African small businesses.</p>
   </div>
   <div class="team-grid">
     <article class="team-card">
@@ -135,8 +249,8 @@
       </div>
       <div class="team-info">
         <strong class="team-name">Brighton Tandabantu</strong>
-        <span class="team-role">Co-founder &amp; Tech Lead</span>
-        <p class="team-bio">Brighton grew up in Matezwa, Chipinge, and attended Mount Selinda School before studying engineering at the University of Cape Town. He came back to build tools for the shops and communities he grew up around.</p>
+        <span class="team-role">Co-founder and Tech Lead</span>
+        <p class="team-bio">Leads product direction, engineering quality and the path from pilot learning to shipped systems.</p>
       </div>
     </article>
     <article class="team-card">
@@ -146,8 +260,8 @@
       </div>
       <div class="team-info">
         <strong class="team-name">Madrena Tandabantu</strong>
-        <span class="team-role">Developer</span>
-        <p class="team-bio">Madrena attended Chibuwe High School in Chipinge and is completing a Bachelor of Science in Computer Science at the University of the People. She already ships production code while finishing her degree.</p>
+        <span class="team-role">Developer and frontline founder</span>
+        <p class="team-bio">Builds product features while bringing lived tuck shop experience into the product decisions.</p>
       </div>
     </article>
     <article class="team-card">
@@ -157,19 +271,21 @@
       </div>
       <div class="team-info">
         <strong class="team-name">Bradley Chibuwe</strong>
-        <span class="team-role">Field &amp; Partnerships</span>
-        <p class="team-bio">Bradley attended Chibuwe High School in Chipinge and is studying at Chinhoyi University of Technology. He works directly with pilot shops — building relationships and making sure the product works in real conditions on the ground.</p>
+        <span class="team-role">Field and partnerships</span>
+        <p class="team-bio">Works directly with pilot shops, relationships and feedback from real trading conditions.</p>
       </div>
     </article>
   </div>
 </section>
 
-<section class="trust-band">
+<section class="closing-cta">
   <div class="sections">
-    <h2>Practical software for busy counters.</h2>
-    <p>
-      Auto Tuck Shop is designed for small Zimbabwean shops where speed matters, staff may share duties, and sales need to be captured without slowing down customers.
-    </p>
+    <p class="eyebrow">Ready for pilot conversations</p>
+    <h2>Bring your shop memory into WhatsApp.</h2>
+    <div class="hero-actions">
+      <a class="button light" href="https://wa.me/263719550572?text=Hi%20Auto%20Tuck%20Shop" target="_blank" rel="noopener">Message us on WhatsApp</a>
+      <a class="button secondary-light" href="{% url 'privacy' %}">Read the privacy note</a>
+    </div>
   </div>
 </section>
 {% endblock %}

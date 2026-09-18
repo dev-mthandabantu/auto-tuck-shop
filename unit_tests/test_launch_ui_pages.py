@@ -8,10 +8,10 @@ class PublicLaunchPagesTestCase(TestCase):
         response = self.client.get(reverse("home"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Record tuck shop sales from WhatsApp.")
-        self.assertContains(response, "WhatsApp sales tracking for tuck shops in Zimbabwe.")
+        self.assertContains(response, "Send a WhatsApp. Confirm the sale. Get the report.")
+        self.assertContains(response, "Auto Tuck Shop helps Zimbabwean tuck shops record sales")
         self.assertContains(response, "auto_tuck_shop/img/app-icon.png")
-        self.assertContains(response, "From message to sales record.")
+        self.assertContains(response, "Built for a busy counter, not a quiet office.")
         self.assertNotContains(response, "pilot program")
         self.assertNotContains(response, "closed beta")
         self.assertNotContains(response, "waitlist")
