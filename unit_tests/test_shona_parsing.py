@@ -8,16 +8,26 @@ Run with:
 """
 
 import asyncio
+import unittest
 from decimal import Decimal
 
 from asgiref.sync import sync_to_async
+from django.conf import settings
 from django.db import connections
 from django.test import TestCase
 
 from apps.whatsapp.services.message_parser import parse_message_unified
-from services.openrouter.client import OpenRouterError
 
-
+# Skip the whole class up front if there's no key to call OpenRouter with,
+# rather than guessing after a real call fails (#374). The old approach
+# matched specific substrings ("401", "API request failed") in whatever
+# exception _parse() caught — but OpenRouterError is raised for several
+# unrelated reasons too (a 402, a bad HTTP status, a network failure,
+# unexpected response format — see services/openrouter/client.py), so a
+# transient failure with different wording (a timeout, a DNS error, a 502)
+# would fail these tests for real instead of skipping, turning a network
+# blip into a red CI check on an unrelated PR.
+@unittest.skipUnless(settings.OPENROUTER_API_KEY, "OPENROUTER_API_KEY not configured")
 class ShonaParsingTestCase(TestCase):
 
     @staticmethod
@@ -36,14 +46,12 @@ class ShonaParsingTestCase(TestCase):
             await sync_to_async(connections.close_all)()
 
     def _parse(self, message):
-        # The connection is opened inside asyncio.run, before any skip below is raised,
-        # so the cleanup above runs even on the no-API-key path.
+        # No try/except guessing from error text here (#374/#375) — the class-level
+        # @skipUnless above already decided, before any test runs, whether OPENROUTER_API_KEY
+        # is configured. If we get this far the key is set, so a real failure here is a real
+        # failure and should raise, not be silently swallowed as "must be no key".
         try:
             return asyncio.run(self._parse_and_close(message))
-        except Exception as e:
-            if "401" in str(e) or "API request failed" in str(e) or "OpenRouter" in type(e).__name__:
-                self.skipTest(f"OpenRouter unavailable (no valid API key): {e}")
-            raise
         finally:
             connections.close_all()
 
