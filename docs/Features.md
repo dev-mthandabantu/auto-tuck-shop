@@ -105,7 +105,12 @@ A brand-new, not-yet-approved number is unaffected by any of this — that flow 
 New phone numbers automatically enter a waitlist. The flow:
 1. Language selection (English / Shona)
 2. Shop name collection
-3. Admin notified via WhatsApp with Approve/Reject buttons
+3. Admins notified via WhatsApp — the primary admin gets Approve/Reject buttons;
+   any additional admins in `ADMIN_PHONE_NUMBER` get the same alert as plain text
+   with a link to the admin panel (#388). Only the primary can carry buttons:
+   `WaitlistEntry` records a single `confirmation_message_sid` and the button
+   handler finds the entry by matching it, so a second recipient's buttons would
+   resolve to nothing
 4. On approval: Company created, welcome message sent
 5. On rejection: Owner notified
 6. Owner records and confirms their **first sale** — bot asks for closing time (3s delay)

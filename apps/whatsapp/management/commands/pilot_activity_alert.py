@@ -4,7 +4,7 @@ import sentry_sdk
 from django.core.management.base import BaseCommand
 
 from apps.core.services import PILOT_SILENCE_WINDOW_DAYS, count_active_pilot_shops
-from apps.whatsapp.services.webhook_handler import ADMIN_PHONE_NUMBER, t
+from apps.whatsapp.services.webhook_handler import send_to_admins, t
 from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
 
 
@@ -46,9 +46,10 @@ class Command(BaseCommand):
                     level="error",
                 )
 
-            if ADMIN_PHONE_NUMBER:
-                message = t("pilot_admin.silence_alert", days=PILOT_SILENCE_WINDOW_DAYS)
-                client = get_whatsapp_client()
-                sent = asyncio.run(client.send_message(ADMIN_PHONE_NUMBER, message))
-                if not sent:
-                    self.stderr.write("Failed to send pilot silence WhatsApp alert to admin")
+            message = t("pilot_admin.silence_alert", days=PILOT_SILENCE_WINDOW_DAYS)
+            client = get_whatsapp_client()
+            sent = asyncio.run(
+                send_to_admins(lambda recipient: client.send_message(recipient, message))
+            )
+            if not sent:
+                self.stderr.write("Failed to send pilot silence WhatsApp alert to admin")

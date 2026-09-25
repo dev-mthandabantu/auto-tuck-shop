@@ -21,6 +21,7 @@
     },
     "waitlist_admin": {
         "new_request": "New person wants to join:\n\nPhone: {phone}\nMessage: {message}",
+        "new_request_secondary": "New person wants to join:\n\nPhone: {phone}\nMessage: {message}\n\nApprove or reject here: {admin_url}",
         "approved": "✓ Approved {phone}\nShop: {company}",
         "rejected": "✗ Rejected {phone}",
         "btn_approve": "Confirm",

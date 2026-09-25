@@ -192,7 +192,10 @@ fly ssh console --app auto-tuck-shop
 
 The admin phone receives waitlist notifications. It is set in:
 
-`apps/whatsapp/services/webhook_handler.py` — `ADMIN_PHONE_NUMBER`
+`apps/whatsapp/services/webhook_handler.py` — `ADMIN_PHONE_NUMBER` (primary) and
+`ADMIN_PHONE_NUMBERS` (all admins). Set `ADMIN_PHONE_NUMBER` to a comma-separated
+list to notify more than one person (#388); send to all of them via
+`send_to_admins()` rather than looping at the call site.
 
 ## Troubleshooting
 

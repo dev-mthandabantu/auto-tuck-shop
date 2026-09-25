@@ -95,7 +95,14 @@ def t(key: str, lang: str = DEFAULT_LANGUAGE, **kwargs) -> str:
 # ---------------------------------------------------------------------------
 
 from django.conf import settings
-ADMIN_PHONE_NUMBER = settings.ADMIN_PHONE_NUMBER or "+14342183470"
+
+# Legacy hardcoded fallback kept so an unset ADMIN_PHONE_NUMBER behaves exactly
+# as it did before #388. ADMIN_PHONE_NUMBERS must fall back to the same value,
+# or the fan-out helper would send to nobody in that case while the single-value
+# path still sent to the fallback.
+_ADMIN_PHONE_FALLBACK = "+14342183470"
+ADMIN_PHONE_NUMBER = settings.ADMIN_PHONE_NUMBER or _ADMIN_PHONE_FALLBACK
+ADMIN_PHONE_NUMBERS = settings.ADMIN_PHONE_NUMBERS or [_ADMIN_PHONE_FALLBACK]
 
 
 def _extract_phone_number(sender: str) -> str:
@@ -146,6 +153,42 @@ async def _send_response_with_buttons(
 ) -> str | None:
     client = get_whatsapp_client()
     return await client.send_message_with_buttons(to, message, buttons, reply_to=reply_to)
+
+
+async def send_to_admins(send, recipients: list[str] | None = None) -> bool:
+    """Fan a send out to every admin number, returning True if any of them got it.
+
+    ``send`` is an async callable taking one recipient and doing the actual send;
+    call sites pass whichever client method they need (plain text, template, ...)
+    rather than each re-implementing the loop (#388).
+
+    One admin being unreachable must not make the whole notification look failed:
+    a bad or stale second number would otherwise mark every waitlist alert as
+    undelivered and feed a false signal to #387's stale-pending flag. So each
+    recipient is attempted independently, failures are logged per-recipient, and
+    the overall result is "did at least one admin get this".
+    """
+    if recipients is None:
+        recipients = ADMIN_PHONE_NUMBERS
+    if not recipients:
+        logger.warning("No admin phone numbers configured — admin notification not sent")
+        return False
+
+    delivered = False
+    for recipient in recipients:
+        try:
+            result = await send(recipient)
+        except Exception:
+            logger.exception("Admin notification failed for recipient %s", recipient)
+            continue
+        # Client methods return False/None on a graceful failure (send_message
+        # returns bool, send_message_with_buttons returns a sid or None), so a
+        # falsy result counts as undelivered for that recipient, not a success.
+        if result:
+            delivered = True
+        else:
+            logger.warning("Admin notification not delivered to recipient %s", recipient)
+    return delivered
 
 
 def _send_fallback_error(sender: str, user_profile: UserProfile | None) -> None:

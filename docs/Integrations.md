@@ -102,7 +102,7 @@ Optional error tracking. Initialised only if `SENTRY_DSN` is set. Tagged with `S
 
 **Cron monitors:** `send_daily_reports`, `send_nudges`, `auto_cancel_stale_sales`, and `pilot_activity_alert` are wrapped with `sentry_sdk.monitor`. These appear at `aakitech.sentry.io/crons/` as `send-daily-reports`, `send-nudges`, `auto-cancel-stale-sales`, and `pilot-activity-alert`. All alert if a run is missed or takes longer than 5 minutes.
 
-**Pilot activity alert (#273):** `pilot_activity_alert` runs daily and checks whether any real (non-test) pilot shop has recorded a confirmed sale in the last 7 days. If not, it fires a Sentry error-level `capture_message` tagged `failure_type: pilot_activity_silence` (so it shows up as an issue, not just a missed cron) and WhatsApps `ADMIN_PHONE_NUMBER` directly — this is a business-silence signal, not a crash, so it can't rely on the cron-monitor heartbeat alone.
+**Pilot activity alert (#273):** `pilot_activity_alert` runs daily and checks whether any real (non-test) pilot shop has recorded a confirmed sale in the last 7 days. If not, it fires a Sentry error-level `capture_message` tagged `failure_type: pilot_activity_silence` (so it shows up as an issue, not just a missed cron) and WhatsApps every admin in `ADMIN_PHONE_NUMBER` (comma-separated, #388) directly — this is a business-silence signal, not a crash, so it can't rely on the cron-monitor heartbeat alone.
 
 **Required secrets:** `SENTRY_DSN`, `SENTRY_ENVIRONMENT` (set to `production` on prod), `SENTRY_AUTH_TOKEN` (GitHub secret, used by deploy workflow only).
 

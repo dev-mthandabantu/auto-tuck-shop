@@ -170,7 +170,32 @@ META_WHATSAPP_VERIFY_TOKEN = env("META_WHATSAPP_VERIFY_TOKEN", default="")  # To
 META_WHATSAPP_APP_SECRET = env("META_WHATSAPP_APP_SECRET", default="")  # For signature verification
 
 # Admin Configuration
-ADMIN_PHONE_NUMBER = env("ADMIN_PHONE_NUMBER", default=None)  # Receives waitlist approval notifications
+# Accepts a comma-separated list so admin alerts reach more than one person —
+# a single number was a point of failure (#388). The first entry stays the
+# "primary" admin: it is the one that receives interactive (button) messages,
+# because WaitlistEntry.confirmation_message_sid can only record one sent
+# message and the approve/reject lookup is keyed on it.
+def parse_admin_phone_numbers(raw: str | None) -> list[str]:
+    """Split the ADMIN_PHONE_NUMBER setting into an ordered, de-duplicated list.
+
+    Blank entries (a trailing comma, a stray ", ,") are dropped, surrounding
+    whitespace is stripped, and a number repeated in the list is only kept once
+    so a copy-paste slip does not WhatsApp the same admin twice. Order is
+    preserved because the first entry is the primary admin.
+    """
+    numbers: list[str] = []
+    for number in (raw or "").split(","):
+        number = number.strip()
+        if number and number not in numbers:
+            numbers.append(number)
+    return numbers
+
+
+_ADMIN_PHONE_NUMBERS_RAW = env("ADMIN_PHONE_NUMBER", default=None)
+ADMIN_PHONE_NUMBERS = parse_admin_phone_numbers(_ADMIN_PHONE_NUMBERS_RAW)
+# Primary admin (first in the list), or None when unset — kept as the original
+# single-value setting so existing call sites and deployments keep working.
+ADMIN_PHONE_NUMBER = ADMIN_PHONE_NUMBERS[0] if ADMIN_PHONE_NUMBERS else None
 
 # Support Configuration
 SUPPORT_PHONE_NUMBER = env("SUPPORT_PHONE_NUMBER", default="")  # Shown to shop owners in the help menu (#131)

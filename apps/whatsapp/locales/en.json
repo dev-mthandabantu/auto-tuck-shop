@@ -21,6 +21,7 @@
     },
     "waitlist_admin": {
         "new_request": "New waitlist request:\n\nPhone: {phone}\nMessage: {message}",
+        "new_request_secondary": "New waitlist request:\n\nPhone: {phone}\nMessage: {message}\n\nApprove or reject here: {admin_url}",
         "approved": "✓ Approved {phone}\nCompany: {company}",
         "rejected": "✗ Rejected {phone}",
         "btn_approve": "Approve",

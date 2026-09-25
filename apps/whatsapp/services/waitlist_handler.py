@@ -14,7 +14,9 @@ from django.conf import settings
 
 from apps.whatsapp.services.webhook_handler import (
     ADMIN_PHONE_NUMBER,
+    ADMIN_PHONE_NUMBERS,
     db_sync_to_async,
+    send_to_admins,
     DEFAULT_LANGUAGE,
     _extract_phone_number,
     _get_profile_by_phone,
@@ -154,6 +156,41 @@ def _deactivate_assistant(user_profile_id: int) -> None:
     User.objects.filter(profile__id=user_profile_id).update(is_active=False)
 
 
+ADMIN_WAITLIST_URL = "https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/"
+
+
+def _secondary_admins() -> list[str]:
+    """Admin numbers other than the primary (see settings.ADMIN_PHONE_NUMBERS)."""
+    return [n for n in ADMIN_PHONE_NUMBERS if n != ADMIN_PHONE_NUMBER]
+
+
+async def _notify_secondary_admins(entry: WaitlistEntry) -> None:
+    """Tell the other admins about a signup, without Approve/Reject buttons.
+
+    Only the primary admin gets the interactive message: WaitlistEntry stores a
+    single confirmation_message_sid, and the approve/reject handler finds the
+    entry by matching it, so a second recipient's buttons would resolve to
+    nothing and reply "already processed" on a still-pending entry. Rather than
+    ship a dead control, secondary admins get the same information plus the
+    admin-panel link and action there (#388).
+    """
+    recipients = _secondary_admins()
+    if not recipients:
+        return
+    message = t(
+        "waitlist_admin.new_request_secondary",
+        phone=entry.phone_number,
+        message=entry.first_message[:100] if entry.first_message else "(none)",
+        admin_url=ADMIN_WAITLIST_URL,
+    )
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+    client = get_whatsapp_client()
+    await send_to_admins(
+        lambda recipient: client.send_message(recipient, message),
+        recipients=recipients,
+    )
+
+
 async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
     # Never let a failure here propagate silently (#339) — by the time this
     # runs, the shop owner has already received their own confirmation
@@ -172,6 +209,18 @@ async def _send_waitlist_admin_notification(entry: WaitlistEntry) -> None:
         {"id": f"waitlist_approve_{entry.id}", "title": t("waitlist_admin.btn_approve")},
         {"id": f"waitlist_reject_{entry.id}", "title": t("waitlist_admin.btn_reject")},
     ]
+    # Secondary admins are notified regardless of how the primary send goes —
+    # the whole point of #388 is that one unreachable admin must not mean
+    # nobody else hears about the signup.
+    try:
+        await _notify_secondary_admins(entry)
+    except Exception:
+        logger.exception(
+            "Secondary admin waitlist notification failed for entry %s (%s)",
+            entry.id,
+            entry.phone_number,
+        )
+
     try:
         message_sid = await _send_response_with_buttons(ADMIN_PHONE_NUMBER, message, buttons)
     except Exception:
@@ -215,7 +264,7 @@ async def _send_admin_notification_template_fallback(entry: WaitlistEntry) -> No
             "parameters": [
                 {"type": "text", "text": entry.phone_number},
                 {"type": "text", "text": message_excerpt},
-                {"type": "text", "text": "https://auto-tuck-shop.fly.dev/admin/core/waitlistentry/"},
+                {"type": "text", "text": ADMIN_WAITLIST_URL},
             ],
         }
     ]
