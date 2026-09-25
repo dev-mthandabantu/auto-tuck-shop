@@ -286,6 +286,27 @@ t("key.subkey", lang=lang, **format_args)
 
 `lang` is stored per `UserProfile`. Default is `"sn"` (Shona).
 
+### Placeholder rules
+
+Callers pass one set of `**format_args` regardless of language, and `t()` ends in
+`str.format(**kwargs)`. That makes the two directions asymmetric:
+
+- **Extra kwargs are harmless** — `str.format` ignores a kwarg the string doesn't use.
+- **A missing kwarg raises `KeyError`** — so a placeholder in `sn.json` that `en.json`
+  lacks breaks the *English* path, because the caller only passes what English needs.
+
+So every placeholder must exist in `en.json` (the reference locale). A translated
+locale may *omit* one where its grammar has no equivalent slot.
+
+`{plural}` is EN-only by design on `report_card.sales_this_week` and
+`summary.sale_word`. English appends `s`; Shona marks plurality in the noun-class
+prefix (`zvatengeswa`), so there is no suffix slot to fill and the kwarg is simply
+ignored. Do not "align" the files by adding `{plural}` to `sn.json` — see #386.
+
+`unit_tests/test_locale_placeholders.py` enforces this: no placeholder may be
+absent from `en.json`, keys must match across locales, and any allowed omission
+must be declared in `KNOWN_EN_ONLY_PLACEHOLDERS` with a grammatical reason.
+
 ## Per-User Message Serialisation
 
 `apps/whatsapp/services/message_lock.py` provides a `threading.Lock` per phone number, held in `handle_incoming_message` / `handle_incoming_audio_message` for the full duration of `run_async()`. This ensures concurrent webhooks from the same sender are processed one at a time — preventing duplicate sales and closing-time race conditions from rapid messages.
