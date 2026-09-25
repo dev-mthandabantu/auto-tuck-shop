@@ -70,3 +70,16 @@ jobs:
 
       - name: Run unit tests
         run: python manage.py test unit_tests
+
+  deploy-gate:
+    name: deploy_gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The gate script guards production deploys but only ever runs on a
+      # release, so its own tests run here instead.
+      - name: Test the production deploy gate
+        run: ./scripts/test-check-unit-tests-passed.sh

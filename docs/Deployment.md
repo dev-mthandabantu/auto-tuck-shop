@@ -40,6 +40,30 @@ Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
 
 **Production** deploys automatically when a GitHub Release is published (GitHub Actions `deploy-production.yml`).
 
+The production deploy is gated on the `unit_tests` check: before `flyctl deploy` runs, the workflow
+looks up the most recently completed `unit_tests` check run for the released commit and aborts
+unless its conclusion is `success`. A commit whose check is failing, cancelled, skipped, still
+running, or absent entirely will not reach production.
+
+The step fails closed. If the API call itself fails, or the response is not a well-formed
+`check_runs` array, the deploy is refused and the response body is printed -- an unreadable
+answer is never treated as a passing build.
+
+The gate lives in `scripts/check-unit-tests-passed.sh` rather than inline in the workflow, so it
+can be tested. `scripts/test-check-unit-tests-passed.sh` runs it against a fake `gh` covering 18
+cases (re-runs, every non-success conclusion, malformed and error responses, bad arguments). The
+`deploy_gate` job in `staging-tests.yml` runs those tests on every PR and push to `main`, since the
+gate itself only ever runs on a release.
+
+This gates the *deploy*, not the merge -- a commit with failing tests can still land on `main` and
+auto-deploy to staging. It is the narrower substitute for branch protection described in #373
+(option 4), not equivalent protection.
+
+If a release is blocked by a check that is missing rather than failing (CI never ran, or the run
+aged out -- from 1 Oct 2026 GitHub expires check runs on the Actions retention setting, default 90
+days, where they previously lasted 400), re-run the `CI` workflow on that commit, then re-publish
+the release. Do not work around the gate by deleting it.
+
 To create a production release:
 ```bash
 # Check what's in main since last release
@@ -61,7 +85,7 @@ Releases follow semver patch bumps (v0.1.0 -> v0.1.1). Only Brighton publishes r
 1. Branch off `main` -- one branch per issue (`fix/issue-name`, `feat/feature-name`)
 2. Open a PR -- title includes the issue number
 3. Post in GitHub Discussions -> Pull Requests, tag a reviewer
-4. Approving reviewers: Brighton, Omar, Kundai, or Munashe (branch protection requires at least one approval) -- see AGENTS.md
+4. Approving reviewers: Brighton, Omar, Kundai, or Munashe -- one approval expected before merge. This is convention, not GitHub-enforced: branch protection is unavailable on this org's plan for a private repo (#373). See AGENTS.md
 5. Squash merge -> branch deleted -> staging auto-deploys
 
 ## Key Environment Variables

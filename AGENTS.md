@@ -81,6 +81,7 @@ Open items: GitHub project board, not here. Match any task to an open issue; che
 - **LLM system prompt (parsing tuning):** `services/openrouter/prompts.py` — text parsing (`build_unified_parsing_prompt`) and image/vision parsing (`build_image_parsing_prompt`)
 - **User-facing strings (EN + Shona):** `apps/whatsapp/locales/en.json`, `sn.json`
 - **Unit tests:** `python manage.py test unit_tests`
+- **Production deploy gate tests:** `./scripts/test-check-unit-tests-passed.sh` (bash, no deps; run by the `deploy_gate` CI job)
 - **Staging integration tests (manual only):** `python -m pytest tests/ -x` (requires `.env.staging`) — not in CI, see #82
 
 **Confidential/strategic content** (partner trust, funding, team structure, legal, commercial negotiations) goes in `aakitech/internal` instead of here (both private repos, discussions/issues only) — this repo's access isn't limited to core eng (it includes field/business and intern roles, see Team above), so treat it as the wider-audience one of the two. See `aakitech/internal` #14 for rationale.
@@ -160,10 +161,10 @@ rounds two and three; label blocking vs discussion explicitly; retract out loud 
 1. **Branch off main**, one branch per issue (e.g. `fix/duplicate-language-prompt`).
 2. **Open a PR** — title includes the issue number. Fill in the PR template properly; Plan/Prediction is written *before* reviewing your own diff, not after. If it touches rendered UI (Django admin, report card images, WhatsApp message/button rendering), attach a screenshot/GIF/video — see the PR Readiness checklist.
 3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly) — after the adversarial self-review pass above, not before.
-4. **Approving reviewers: Brighton, Omar, Kundai, or Munashe** — one approval before merge is expected. Madrena is not a required/approving reviewer (see "Working with Madrena") — she can still read PRs and ask questions as part of learning. **This is convention, not GitHub-enforced:** branch protection and its rulesets replacement are both unavailable on this org's plan for a private repo (same root cause as the wiki being unreachable, see #36) — nothing technically stops a merge without review or with a failing `unit_tests` check, only the team actually following this step. See #373 for the full reasoning and the options considered.
+4. **Approving reviewers: Brighton, Omar, Kundai, or Munashe** — one approval before merge is expected. Madrena is not a required/approving reviewer (see "Working with Madrena") — she can still read PRs and ask questions as part of learning. **This is convention, not GitHub-enforced:** branch protection and its rulesets replacement are both unavailable on this org's plan for a private repo (same root cause as the wiki being unreachable, see #36) — nothing technically stops a merge without review or with a failing `unit_tests` check, only the team actually following this step. See #373 for the full reasoning and the options considered. The one technical backstop is at deploy time, not merge time: the production deploy refuses to run unless `unit_tests` passed on the released commit (#379) — a bad merge still lands on main and still reaches staging.
 5. **Merge** once approved — squash merge, branch deleted.
 6. **Staging auto-deploys** on every push to main (GitHub Actions, no manual step).
-7. **Production deploy** — Brighton publishes a GitHub Release, which triggers auto-deploy. Never deploy to prod without Brighton's explicit sign-off.
+7. **Production deploy** — Brighton publishes a GitHub Release, which triggers auto-deploy. The deploy aborts unless the `unit_tests` check passed on the released commit — see `docs/Deployment.md` if a release is blocked. Never deploy to prod without Brighton's explicit sign-off.
 
 ### Production release steps
 

@@ -4,6 +4,10 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+  checks: read
+
 jobs:
   deploy:
     name: Deploy to production
@@ -14,6 +18,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Require unit_tests to have passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/check-unit-tests-passed.sh "${{ github.repository }}" "${{ github.sha }}"
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
