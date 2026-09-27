@@ -30,6 +30,20 @@ PILOT_SILENCE_WINDOW_DAYS = 7
 CHURN_SILENCE_DAYS = 5
 CHURN_MIN_SALES = 2
 
+# How many days a WaitlistEntry can sit PENDING before it's flagged stale.
+# Backstop for #339: the admin notification for a new signup can fail
+# silently (network error, WhatsApp API error) with only a Sentry log to
+# show for it — this flag surfaces the entry itself even if that log is
+# never noticed.
+STALE_WAITLIST_DAYS = 3
+
+# How long a PENDING entry can go with admin_alerted_at still null before the
+# daily alert flags it (#387). Much shorter than STALE_WAITLIST_DAYS: this
+# catches the no-shop-name case, where _send_waitlist_admin_notification is
+# never even attempted, so there's nothing for STALE_WAITLIST_DAYS's 3-day
+# window to backstop.
+NEVER_ALERTED_MINUTES = 30
+
 
 class PhoneNumberAlreadyRegisteredError(ValueError):
     """Raised when trying to approve a waitlist entry for a phone number that already has a profile."""
@@ -162,3 +176,28 @@ def count_active_pilot_shops(days: int = PILOT_SILENCE_WINDOW_DAYS) -> int:
         .distinct()
         .count()
     )
+
+
+def get_stale_pending_waitlist_entries(days: int = STALE_WAITLIST_DAYS):
+    """PENDING entries older than `days` — see STALE_WAITLIST_DAYS."""
+    cutoff = timezone.now() - timedelta(days=days)
+    return WaitlistEntry.objects.filter(status=WaitlistEntry.Status.PENDING, created_at__lt=cutoff)
+
+
+def get_never_alerted_waitlist_entries(minutes: int = NEVER_ALERTED_MINUTES):
+    """PENDING entries where the admin was never successfully notified —
+    see NEVER_ALERTED_MINUTES. Covers both the no-shop-name case (alert
+    never attempted) and a button-send-and-template-fallback double failure
+    (alert attempted, both failed)."""
+    cutoff = timezone.now() - timedelta(minutes=minutes)
+    return WaitlistEntry.objects.filter(
+        status=WaitlistEntry.Status.PENDING,
+        admin_alerted_at__isnull=True,
+        created_at__lt=cutoff,
+    )
+
+
+def mark_stale_alerted(entries) -> None:
+    """Records these entries as pinged so stale_waitlist_alert doesn't
+    re-send for them next run (#387)."""
+    WaitlistEntry.objects.filter(id__in=[e.id for e in entries]).update(stale_alert_sent_at=timezone.now())

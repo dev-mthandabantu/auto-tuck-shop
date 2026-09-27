@@ -12,6 +12,7 @@ Meta WhatsApp Business API
 Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
     +-- app machines (Gunicorn)
     +-- cron machine (every 15 min: send_daily_reports, send_nudges, auto_cancel_stale_sales;
+    |                  every 30 min: stale_waitlist_alert;
     |                  daily 08:00 Africa/Harare: pilot_activity_alert)
     +-- PostgreSQL (Fly managed)
         |

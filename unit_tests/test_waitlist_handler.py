@@ -5,9 +5,9 @@ import asyncio
 
 from unit_tests.async_helpers import run_async_test as _run
 from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.core.models import WaitlistEntry
@@ -135,10 +135,9 @@ class ProcessWaitlistedMessageGreetingTest(TransactionTestCase):
 
 
 class SendWaitlistAdminNotificationTest(TransactionTestCase):
-    """Regression for #281 — outside the 24h window, the admin notification
-    must fall back to the approved ats_admin_new_signup template, not
-    ats_reengagement (which is written for a dormant shop owner, not an
-    admin alert — see #199)."""
+    """#387 — template (ats_admin_new_signup) is the primary admin alert,
+    since interactive buttons only deliver within Meta's 24h window. Buttons
+    are still attempted as a bonus (#281 — not ats_reengagement, see #199)."""
 
     def setUp(self):
         self.entry = WaitlistEntry.objects.create(
@@ -147,13 +146,13 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
             status=WaitlistEntry.Status.PENDING,
         )
 
-    def test_falls_back_to_admin_new_signup_template_when_buttons_fail(self):
+    def test_sends_template_regardless_of_button_outcome(self):
         client_mock = AsyncMock()
         send_template_mock = AsyncMock()
         client_mock.send_template_message = send_template_mock
 
         async def _run_test():
-            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value=None)), \
+            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value="sid_1")), \
                  patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=client_mock):
                 await _send_waitlist_admin_notification(self.entry)
 
@@ -166,27 +165,42 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
         self.assertEqual(params[0]["text"], "+263771000700")
         self.assertEqual(params[1]["text"], "Sold 2 Mazoe $1 each")
         self.assertIn("fly.dev/admin", params[2]["text"])
+        self.entry.refresh_from_db()
+        self.assertIsNotNone(self.entry.admin_alerted_at)
+        self.assertEqual(self.entry.confirmation_message_sid, "sid_1")
 
-    def test_does_not_use_template_fallback_when_buttons_succeed(self):
-        send_template_mock = AsyncMock()
+    @override_settings(
+        USE_MOCK_WHATSAPP=False,
+        META_WHATSAPP_ACCESS_TOKEN="test-token",
+        META_WHATSAPP_PHONE_NUMBER_ID="test-phone-id",
+    )
+    def test_template_send_posts_expected_payload_to_meta(self):
+        """#387 — exercises the real send_template_message body (payload,
+        credentials check, response handling), not just that it was called."""
+        http_response = MagicMock()
+        http_response.raise_for_status = MagicMock()
+        http_response.json.return_value = {"messages": [{"id": "wamid.123"}]}
+        post_mock = AsyncMock(return_value=http_response)
 
         async def _run_test():
-            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value="sid_1")), \
-                 patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client") as get_client_mock:
-                get_client_mock.return_value.send_template_message = send_template_mock
+            with patch("apps.whatsapp.services.waitlist_handler._send_response_with_buttons", new=AsyncMock(return_value=None)), \
+                 patch("httpx.AsyncClient.post", new=post_mock):
                 await _send_waitlist_admin_notification(self.entry)
 
         _run(_run_test())
-        send_template_mock.assert_not_called()
+        post_mock.assert_called_once()
+        _, kwargs = post_mock.call_args
+        payload = kwargs["json"]
+        self.assertEqual(payload["template"]["name"], "ats_admin_new_signup")
+        self.assertEqual(payload["template"]["language"]["code"], "en")
+        params = payload["template"]["components"][0]["parameters"]
+        self.assertEqual(params[0]["text"], "+263771000700")
+        self.entry.refresh_from_db()
+        self.assertIsNotNone(self.entry.admin_alerted_at)
 
-    def test_raised_button_failure_still_falls_back_to_template(self):
-        """Regression for #339 review (Brighton) — the first version of this
-        fix caught a raised exception from _send_response_with_buttons too
-        early, before the existing ats_admin_new_signup template fallback
-        got a chance to run. That meant a transient network/API error left
-        the admin with no immediate notification at all, whereas a graceful
-        None return already correctly triggered the fallback. Both failure
-        modes must reach the same fallback path."""
+    def test_button_failure_does_not_block_template(self):
+        """Regression for #339 review (Brighton) — a raised exception from
+        _send_response_with_buttons must not stop the template send."""
         client_mock = AsyncMock()
         send_template_mock = AsyncMock()
         client_mock.send_template_message = send_template_mock
@@ -202,11 +216,13 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
         send_template_mock.assert_called_once()
         args, _ = send_template_mock.call_args
         self.assertEqual(args[1], "ats_admin_new_signup")
+        self.entry.refresh_from_db()
+        self.assertIsNotNone(self.entry.admin_alerted_at)
 
     def test_unhandled_send_exception_does_not_propagate(self):
         """Regression for #339 — entry #30 sat pending for 29 days with zero
-        trace of any notification attempt. Even if the button send AND the
-        template fallback both fail (e.g. the WhatsApp client is completely
+        trace of any notification attempt. Even if the template AND the
+        button send both fail (e.g. the WhatsApp client is completely
         unreachable), _send_waitlist_admin_notification must swallow the
         failure itself so callers never need to guess whether it's safe to
         call unguarded — the stale-pending admin flag is the backstop for
@@ -223,6 +239,8 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
                 await _send_waitlist_admin_notification(self.entry)
 
         _run(_run_test())  # must not raise
+        self.entry.refresh_from_db()
+        self.assertIsNone(self.entry.admin_alerted_at)
 
     def test_stale_pending_flag_reflects_send_failure(self):
         from apps.core.admin import WaitlistEntryAdmin
@@ -239,3 +257,44 @@ class SendWaitlistAdminNotificationTest(TransactionTestCase):
 
         admin_instance = WaitlistEntryAdmin(WaitlistEntry, django_admin.site)
         self.assertFalse(admin_instance.stale_pending_flag(self.entry))
+
+
+class GetNeverAlertedWaitlistEntriesTest(TransactionTestCase):
+    """#387 — entries the admin was never successfully notified about,
+    either because no shop name has arrived yet or because both the button
+    send and the template fallback failed."""
+
+    def _make_entry(self, **kwargs):
+        defaults = {
+            "phone_number": "+263771000800",
+            "status": WaitlistEntry.Status.PENDING,
+            "created_at": timezone.now() - timedelta(minutes=31),
+        }
+        defaults.update(kwargs)
+        entry = WaitlistEntry.objects.create(**{k: v for k, v in defaults.items() if k != "created_at"})
+        WaitlistEntry.objects.filter(id=entry.id).update(created_at=defaults["created_at"])
+        return WaitlistEntry.objects.get(id=entry.id)
+
+    def test_includes_entry_never_alerted_past_the_window(self):
+        from apps.core.services import get_never_alerted_waitlist_entries
+
+        entry = self._make_entry(phone_number="+263771000801")
+        self.assertIn(entry, list(get_never_alerted_waitlist_entries()))
+
+    def test_excludes_entry_already_alerted(self):
+        from apps.core.services import get_never_alerted_waitlist_entries
+
+        entry = self._make_entry(
+            phone_number="+263771000802",
+            admin_alerted_at=timezone.now() - timedelta(minutes=31),
+        )
+        self.assertNotIn(entry, list(get_never_alerted_waitlist_entries()))
+
+    def test_excludes_approved_entry(self):
+        from apps.core.services import get_never_alerted_waitlist_entries
+
+        entry = self._make_entry(
+            phone_number="+263771000803",
+            status=WaitlistEntry.Status.APPROVED,
+        )
+        self.assertNotIn(entry, list(get_never_alerted_waitlist_entries()))

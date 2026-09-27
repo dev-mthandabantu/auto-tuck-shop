@@ -10,17 +10,11 @@ from django.utils import timezone
 
 from apps.core.models import Company, UserProfile, WaitlistEntry
 from apps.core.pilot_test_phones import PILOT_TEST_PHONES
+from apps.core.services import STALE_WAITLIST_DAYS, get_stale_pending_waitlist_entries
 
 # How many days without a confirmed sale AND without an inbound message before
 # an active, already-onboarded shop is flagged as needing attention (#274).
 NEEDS_ATTENTION_DAYS = 7
-
-# How many days a WaitlistEntry can sit PENDING before it's flagged stale.
-# Backstop for #339: the admin notification for a new signup can fail
-# silently (network error, WhatsApp API error) with only a Sentry log to
-# show for it — this flag surfaces the entry itself even if that log is
-# never noticed.
-STALE_WAITLIST_DAYS = 3
 
 
 class NeedsAttentionFilter(admin.SimpleListFilter):
@@ -237,8 +231,8 @@ class StalePendingFilter(admin.SimpleListFilter):
     def queryset(self, request, queryset):
         if self.value() != "yes":
             return queryset
-        cutoff = timezone.now() - timedelta(days=STALE_WAITLIST_DAYS)
-        return queryset.filter(status=WaitlistEntry.Status.PENDING, created_at__lt=cutoff)
+        stale_ids = get_stale_pending_waitlist_entries().values_list("id", flat=True)
+        return queryset.filter(id__in=stale_ids)
 
 
 @admin.register(WaitlistEntry)
@@ -259,8 +253,7 @@ class WaitlistEntryAdmin(admin.ModelAdmin):
     def stale_pending_flag(self, obj):
         if obj.status != WaitlistEntry.Status.PENDING:
             return False
-        cutoff = timezone.now() - timedelta(days=STALE_WAITLIST_DAYS)
-        return obj.created_at < cutoff
+        return get_stale_pending_waitlist_entries().filter(id=obj.id).exists()
 
     stale_pending_flag.boolean = True
     stale_pending_flag.short_description = f"Stale {STALE_WAITLIST_DAYS}+ days"

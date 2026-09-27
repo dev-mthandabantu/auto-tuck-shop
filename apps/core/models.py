@@ -108,6 +108,8 @@ class WaitlistEntry(models.Model):
     user_profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, null=True, blank=True)
     notes = models.TextField(blank=True)
     confirmation_message_sid = models.CharField(max_length=100, blank=True, null=True)
+    admin_alerted_at = models.DateTimeField(null=True, blank=True)
+    stale_alert_sent_at = models.DateTimeField(null=True, blank=True)
     language = models.CharField(
         max_length=10,
         default="sn",
