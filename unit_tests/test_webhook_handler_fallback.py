@@ -106,7 +106,12 @@ class GreetingSilenceGateTest(TransactionTestCase):
     greeting_acknowledged reply instead of silence, since silence is indistinguishable
     from a broken bot from the owner's side. The classification gate itself (only
     treating recognised filler words/emoji as "greeting", not every LLM label) is
-    unchanged — only what happens once something IS classified as a real greeting."""
+    unchanged — only what happens once something IS classified as a real greeting.
+
+    #385 then carved out a narrower exception on top of #382: a bare reaction emoji
+    (👍🙏❤️✅) is almost always a reaction to the bot's own last message, not someone
+    opening a conversation, so it stays silent while word-filler greetings ("hi",
+    "thanks") keep getting the #382 reply."""
 
     def setUp(self):
         self.profile = _make_profile(phone="+263771000299")
@@ -133,30 +138,47 @@ class GreetingSilenceGateTest(TransactionTestCase):
         self.assertEqual(args[0], self.sender)
         self.assertEqual(args[1], t("other.greeting_acknowledged", lang=self.profile.language))
 
-    def test_llm_prompt_greeting_examples_get_greeting_reply(self):
+    def test_llm_prompt_word_greeting_examples_get_greeting_reply(self):
         """services/openrouter/prompts.py explicitly trains the LLM's "greeting" sub-intent
-        on "hi", "okay", "thanks", "good morning", "👍", "🙏", "❤️", and "✅" — every one of
-        those must be recognised by the classification gate and produce the specific
+        on word fillers like "hi", "okay", "thanks", "good morning" — every one of those
+        must be recognised by the classification gate and produce the specific
         greeting_acknowledged reply (#382), not fall through to other.deferral."""
         expected = t("other.greeting_acknowledged", lang=self.profile.language)
-        for example in ("hi", "okay", "thanks", "good morning", "\U0001F44D", "\U0001F64F", "❤️", "✅"):
+        for example in ("hi", "okay", "thanks", "good morning"):
             with self.subTest(example=example):
                 send_mock = self._run_other_greeting(example)
                 send_mock.assert_called_once()
                 args, _ = send_mock.call_args
                 self.assertEqual(args[1], expected)
 
-    def test_multi_word_and_repeated_emoji_greetings_get_greeting_reply(self):
+    def test_llm_prompt_reaction_emoji_examples_stay_silent(self):
+        """services/openrouter/prompts.py also trains the "greeting" sub-intent on bare
+        reaction emoji ("👍", "🙏", "❤️", "✅") — but per #385 these are almost always a
+        reaction to the bot's own last message, not someone opening a conversation, so
+        they must NOT get the greeting_acknowledged reply (or any reply) — a reversal of
+        #382's behaviour for this specific case only."""
+        for example in ("\U0001F44D", "\U0001F64F", "❤️", "✅"):
+            with self.subTest(example=example):
+                send_mock = self._run_other_greeting(example)
+                send_mock.assert_not_called()
+
+    def test_multi_word_greetings_get_greeting_reply(self):
         """Not just the LLM prompt's exact examples — nearby real-world phrasing a shop
         owner would plausibly send, still classified as a recognised greeting and
         replied to with the specific greeting_acknowledged message (#382), not silenced."""
         expected = t("other.greeting_acknowledged", lang=self.profile.language)
-        for example in ("thanks so much!", "thank you very much", "mangwanani", "\U0001F44D\U0001F44D"):
+        for example in ("thanks so much!", "thank you very much", "mangwanani"):
             with self.subTest(example=example):
                 send_mock = self._run_other_greeting(example)
                 send_mock.assert_called_once()
                 args, _ = send_mock.call_args
                 self.assertEqual(args[1], expected)
+
+    def test_repeated_reaction_emoji_stays_silent(self):
+        """Multiple reaction emoji in one message ("👍👍") is still an emoji-only
+        reaction per #385, not a word greeting — must stay silent, not get a reply."""
+        send_mock = self._run_other_greeting("\U0001F44D\U0001F44D")
+        send_mock.assert_not_called()
 
     def test_unrecognised_greeting_falls_through_to_deferral_reply(self):
         """If the LLM classifies something as "greeting" that ISN'T a recognised filler
@@ -179,6 +201,45 @@ class GreetingSilenceGateTest(TransactionTestCase):
         send_mock.assert_called_once()
         args, _ = send_mock.call_args
         self.assertEqual(args[1], t("other.deferral", lang=self.profile.language))
+
+
+class ReactionEmojiTypingIndicatorTest(TransactionTestCase):
+    """#385 review (Munashe): the typing indicator fires before classification, so a
+    bare reaction emoji — which now gets no reply at all — produced a typing_on with
+    no message to follow it, the exact "flicker then silence" confusion the pre-#382
+    silence guard existed to avoid. The indicator must be skipped for the same
+    emoji-only messages the reply itself skips."""
+
+    def setUp(self):
+        self.profile = _make_profile(phone="+263771000499")
+        self.sender = self.profile.phone_number
+
+    def _run(self, text):
+        result = UnifiedMessageResult(intent="other", confidence=0.7, other_sub_intent="greeting")
+        typing_client = Mock()
+        typing_client.send_typing_indicator = AsyncMock()
+        with (
+            patch("apps.whatsapp.services.webhook_handler.parse_message_unified", new=AsyncMock(return_value=result)),
+            patch("apps.whatsapp.services.webhook_handler._send_response", new=AsyncMock()),
+            patch("apps.whatsapp.services.webhook_handler.get_whatsapp_client", return_value=typing_client),
+            patch("apps.whatsapp.services.webhook_handler.settings.ENABLE_WHATSAPP_TYPING", True),
+        ):
+            _run(_process_message_async("msg", self.sender, text, self.profile))
+        return typing_client.send_typing_indicator
+
+    def test_reaction_emoji_does_not_trigger_typing_indicator(self):
+        for example in ("\U0001F44D", "\U0001F64F", "❤️", "✅", "\U0001F44D\U0001F44D"):
+            with self.subTest(example=example):
+                typing_mock = self._run(example)
+                typing_on_calls = [c for c in typing_mock.call_args_list if c.args[1:2] == ("typing_on",)]
+                self.assertEqual(typing_on_calls, [])
+
+    def test_word_greeting_still_triggers_typing_indicator(self):
+        """Only the emoji-only case is excluded — word fillers still get a reply
+        (#382), so the typing indicator must still fire for them as before."""
+        typing_mock = self._run("hi")
+        typing_on_calls = [c for c in typing_mock.call_args_list if c.args[1:2] == ("typing_on",)]
+        self.assertEqual(len(typing_on_calls), 1)
 
 
 class HelpMenuTest(TransactionTestCase):

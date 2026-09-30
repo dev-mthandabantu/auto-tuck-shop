@@ -556,9 +556,13 @@ async def _process_message_async(
         # other.deferral instead of the shorter greeting_acknowledged reply. Keep this
         # in sync with the prompt's example list.
         #
-        # Greetings now always get a reply (#382, reversing #284's silence-for-everyone
+        # Greetings now get a reply by default (#382, reversing #284's silence-for-everyone
         # default) — the typing indicator fires for them the same as any other message
-        # that produces a response, matching what the shop owner actually sees.
+        # that produces a response, matching what the shop owner actually sees. Exception
+        # (#385): a bare reaction emoji (👍🙏❤️✅) is almost always a reaction to the bot's
+        # own last message, not someone opening a conversation — so it stays silent, same
+        # as #284's original default, while word-filler greetings ("hi", "thanks") keep
+        # getting the #382 reply.
         _SILENT_PATTERN = re.compile(
             r"^\s*("
             r"(good\s+)?(morning|afternoon|evening|night)|"
@@ -578,6 +582,9 @@ async def _process_message_async(
         def _is_silent_greeting(candidate: str) -> bool:
             return bool(_SILENT_PATTERN.match(candidate) or _EMOJI_ONLY_PATTERN.match(candidate))
 
+        def _is_emoji_only_reaction(candidate: str) -> bool:
+            return bool(_EMOJI_ONLY_PATTERN.match(candidate))
+
         # Guards the unnamed-shop name-capture gate below (#316 review) — a
         # digit alongside a currency indicator is almost certainly a sale
         # attempt ("2 Mazoe $1 each"), not a shop name, and must not be
@@ -593,7 +600,12 @@ async def _process_message_async(
             return bool(re.search(r"\d", candidate)) and bool(_SALE_SHAPED_PATTERN.search(candidate))
 
         _typing_sent = False
-        if settings.ENABLE_WHATSAPP_TYPING:
+        # #385 review (Munashe): a bare reaction emoji gets no reply at all, so
+        # showing typing_on first is a flicker-then-silence dead end — the same
+        # confusion the old pre-#382 silence guard existed to avoid. Skip typing
+        # for the same emoji-only messages the reply itself skips (checked on raw
+        # text since classification hasn't happened yet).
+        if settings.ENABLE_WHATSAPP_TYPING and not _is_emoji_only_reaction(text.strip()):
             try:
                 client = get_whatsapp_client()
                 try:
@@ -739,7 +751,15 @@ async def _process_message_async(
             # just after a silence window — simpler, and deliberately accepts the
             # repeated-reply tradeoff #284 was avoiding, since a short one-line
             # acknowledgement is judged less noisy than potential dead-bot confusion.
-            if sub == "greeting" and _is_silent_greeting(text):
+            #
+            # #385 carves out one exception: a bare reaction emoji (👍🙏❤️✅) is almost
+            # always a reaction to the bot's own last message ("Sale recorded" -> "👍"),
+            # not someone opening a conversation — the "is this bot working" problem #382
+            # solves doesn't apply, so it stays silent instead of getting the greeting
+            # reply. Word-filler greetings ("hi", "thanks") are unaffected.
+            if sub == "greeting" and _is_emoji_only_reaction(text):
+                return
+            elif sub == "greeting" and _is_silent_greeting(text):
                 await _send_response(sender, t("other.greeting_acknowledged", lang=lang))
             elif sub == "question":
                 await _send_response(sender, t("help.menu", lang=lang, support_phone=settings.SUPPORT_PHONE_NUMBER))
