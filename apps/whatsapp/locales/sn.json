@@ -70,8 +70,8 @@
     },
     "summary": {
         "heading": "Zvaitika nezuva ra{date}",
-        "revenue_line": "Zvese pamwe: {revenue} kubva ku {sale_word}",
-        "sale_word": "{count} zvatengeswa",
+        "revenue_line": "Zvese pamwe: {revenue} ({sale_word})",
+        "sale_word": "Zvatengeswa: {count}",
         "top_sellers": "Zvanyanya kutengwa:",
         "top_seller_line": "  • {name}: {qty}",
         "quiet_day_today": "Zuva rakanyarara — hapana zvatengeswa.",
@@ -80,7 +80,7 @@
     },
     "report_card": {
         "your_shop": "Shopu Yako",
-        "sales_this_week": "{count} zvatengeswa vhiki rino",
+        "sales_this_week": "Zvatengeswa vhiki rino: {count}",
         "best_day_this_week": "Zuva rakanakisa vhiki rino: {day}",
         "today": "Nhasi",
         "top_sellers": "Zvanyanya kutengwa",

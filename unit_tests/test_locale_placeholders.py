@@ -165,10 +165,12 @@ class LocaleRenderingTests(SimpleTestCase):
         self.assertEqual(self._render("en", "summary.sale_word", 0), "0 sales")
 
     def test_shona_renders_with_the_unused_plural_kwarg(self):
-        """The extra kwarg is ignored rather than raising — why sn.json is fine."""
+        """#394: label + count avoids Class 8 plural agreement ("zvatengeswa")
+        being grammatically wrong at count = 1. The extra kwarg is ignored
+        rather than raising — why sn.json is fine."""
         for count in (0, 1, 2):
             rendered = self._render("sn", "summary.sale_word", count)
-            self.assertEqual(rendered, f"{count} zvatengeswa")
+            self.assertEqual(rendered, f"Zvatengeswa: {count}")
             self.assertNotIn("{", rendered)
 
     def test_report_card_label_renders_in_both_locales(self):
@@ -180,5 +182,5 @@ class LocaleRenderingTests(SimpleTestCase):
         )
         self.assertEqual(
             self._render("sn", "report_card.sales_this_week", 3),
-            "3 zvatengeswa vhiki rino",
+            "Zvatengeswa vhiki rino: 3",
         )
