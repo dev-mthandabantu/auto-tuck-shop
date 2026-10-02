@@ -1,11 +1,5 @@
 # Project Guidelines
 
-## Keeping this file current
-
-This is the source of truth for any AI assistant working on this repo. Update it at the end of any session with meaningful progress — phase changes, new conventions, team changes. Don't let it drift.
-
-**Doc updates ship in the same PR as the change they affect**, not as a follow-up — see "Docs index" below. This applies even to small changes; a one-line fix can still contradict a documented invariant.
-
 ## Start of every session
 
 1. **Who is working?** — Brighton or Madrena (see "Working with Madrena" below for what that means in practice)
@@ -23,9 +17,7 @@ When a task has you reading an issue, doc, discussion, or deploy state anyway, c
 
 This is **reactive, not a standing scan** — check what you're already touching, don't go looking for staleness unprompted. One exception: early in a session, a cheap check of whether `business-operations` discussion #23 has a comment for the current calendar week is worth doing and saying one line about either way — that thread is the team's actual weekly pulse, and a missing kickoff comment is a real, high-value signal. Once you've confirmed it for the week, no need to re-check it again in later sessions that same week.
 
-When the question is "what should person X actually work on," check this repo's own [discussion #304 — "Roadmap: who's working on what"](https://github.com/aakitech/auto-tuck-shop/discussions/304) too, not just #23. #23 carries the live sprint narrative (deadlines, blockers, urgency) across all three repos; #304 is the standing per-person "what's your lane in ATS" picture and is often the more specific source for an individual's assignments here. Use #23 for what's urgent, #304 for whose desk something sits on.
-
-Applies to everyone, not just Brighton — but tune the delivery per the same split as "Working with Madrena" below: terse and direct for Brighton/Kundai/Omar/Munashe, framed without alarm for Madrena (a flagged staleness issue is information, not a mistake she made).
+When the question is "what should person X actually work on," check this repo's own [discussion #304 — "Roadmap: who's working on what"](https://github.com/aakitech/auto-tuck-shop/discussions/304) too, not just #23. #23 carries the live sprint narrative (deadlines, blockers, urgency) across all three repos; #304 is the standing per-person "what's your lane in ATS" picture and is often the more specific source for an individual's assignments here. Use #23 for what's urgent, #304 for whose desk something sits on. For Madrena, a flagged staleness issue is information, not a mistake she made.
 
 ## Working with Madrena
 
@@ -39,7 +31,7 @@ Concretely, when pairing with her:
 - **Terse, assume-the-context responses are for Brighton, Kundai, Omar, Munashe — not her.**
 - **PR/Git workflow gets the same explain-first treatment as code** — don't assume Git fluency just because she's shipped PRs before.
 
----
+## What this is
 
 Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voice messages to record sales. The bot parses them with an LLM (`google/gemini-2.5-flash-lite` via OpenRouter, set by `OPENROUTER_MODEL`), creates sale records, and replies with a confirmation. Voice messages are transcribed by ElevenLabs first.
 
@@ -61,19 +53,9 @@ Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or vo
 
 ## Current phase
 
-**Pilot paused since 2026-08-03 — production still live, outbound messaging off.** Don't read this as "pilot active": the distinction changes what work is worth doing.
+**Pilot paused since 2026-08-03: production live for inbound, all outbound (nudges and daily reports) off, no new cohort onboarding.** Don't approve new shop applications. Restart conditions and checklist live in **#335** (from #278); **#351** (is sales-recording the right wedge?) should land before any restart. Check #335 before assuming this is still current.
 
-- **Inbound works.** Production has been live since 2026-05-25. Any shop that messages the bot still gets a full response — parsing, sale recording, confirmations.
-- **Outbound is off.** The nudge cron was deliberately paused (#278). In practice the whole cron machine was stopped, so `send_daily_reports` has also been off since 3 Aug — that part was *not* intended (see the known gap in #335).
-- **No new cohort is being onboarded.** Don't approve new shop applications until the next cohort is intentionally ready.
-
-**Restart is gated on three conditions from #278**, none currently met: funding secured, bandwidth to follow up on re-engagement, and a cohort intentionally ready. Restart checklist and review date live in **#335** (review not before 1 Oct 2026).
-
-**Before the restart, #351 should land** — whether sales-recording is the right wedge at all, or whether the real pain is debt/stock/profit. Restarting into the wrong wedge spends the only real cohort we have.
-
-Open items: GitHub project board, not here. Match any task to an open issue; check with the user first if it doesn't map to one.
-
-**New issues go on the project immediately:** `gh issue edit <number> --add-project "Auto Tuck Shop — Backlog"`
+Open items live on the GitHub project board. Match any task to an open issue; check with the user first if it doesn't map to one.
 
 ## Where to find context
 
@@ -99,11 +81,7 @@ Read the relevant page before starting any task (session step 3). Update docs in
 | `docs/Pilot-Launch.md` | Pilot success metrics and review cadence |
 | `docs/Home.md` | Overview and quick links |
 
-`docs/` is the sole source of truth — not the GitHub wiki. Wikis require a paid GitHub plan on a
-private repo (this org is on the free plan), so the wiki has been structurally unreachable since
-the repo went private in PR #218 (24 Jun 2026), when its content was migrated into `docs/` for
-exactly this reason. Don't spend time syncing or auditing the wiki — there's nothing reachable
-there to sync to (see #36).
+`docs/` is the sole source of truth. The GitHub wiki is unreachable on this plan; don't sync it (#36).
 
 ## Scope rule
 
@@ -120,74 +98,40 @@ New features for a cohort that isn't running belong in the backlog until the res
 ## Keeping the backlog current
 
 - **Close issues on merge:** `gh issue close <number> --comment "Fixed in #<PR>"`
-- **New out-of-scope issues found mid-work** get added to the project immediately, same command as above.
+- **New issues, including out-of-scope ones found mid-work, go on the project immediately:** `gh issue edit <number> --add-project "Auto Tuck Shop — Backlog"`
 - **Set Status on every new issue** — GitHub doesn't auto-assign one; an unset issue clutters the "No Status" column.
 - **Set a milestone on every new issue** — ask before leaving blank if none fits.
 - **Update priority labels** when significance changes (e.g. "nice to have" → production bug).
 - **Update this file's phase status** when the above changes.
 
-## Adversarial self-review before requesting a reviewer
+## Before requesting review
 
-Try to break your own change before a reviewer does. Not "I read my diff" (already in PR
-Readiness) — an actual attempt to find what a reviewer would find. Recent PRs took 60–130h from
-first review to merge against a ~2h repo median, almost all of it round-trips over things the
-author could have found alone.
+Review round-trips here have run 60–130h against a ~2h median, mostly over things the author could
+have found alone. Run `python manage.py test unit_tests` (say so in the PR if you couldn't), then:
 
-**Before opening the PR:**
+1. Run your own adversarial pass: what would still pass if the feature were deleted, which claims in
+   the PR body don't match the code, which states the tests never construct. Keep findings local.
+2. Run a fresh-context reviewer (new Claude session, review subagent, or Codex) with only the PR and
+   its issue. Give it none of your conclusions.
+3. Fix what holds up from both reviews.
+4. Post one consolidated PR comment: what each review attacked, found, fixed, and left.
+5. Only then tag a human reviewer. Docs-only PRs: "Trivial — no adversarial pass needed".
 
-- **Run the tests** — `python manage.py test unit_tests`. CI runs this suite against PostgreSQL,
-  but local isolation and mutation checks can still catch order-dependent or tautological tests
-  that an aggregate green job misses. If you can't run it locally, say so in the PR rather than
-  claiming a local pass.
-- **For each test you added, ask what would still pass if the feature were deleted.** A test that
-  passes with the code removed is testing nothing — a real finding here more than once.
-- **Check every claim in your PR body and docs against the code as written.** Off-by-one in a
-  stated threshold, a constant described as living in the wrong file — both have blocked PRs here.
-- **Name the states your tests don't construct** — boundaries, null/empty, `<` vs `<=`, a second
-  record where the fixture has one.
-
-**Then post a comment on your own PR** saying what you attacked and what came back, before tagging
-a reviewer. A timestamped comment, not a checkbox, so it's visible the pass happened first.
-"Traced X, found nothing" is worth writing — it tells the reviewer where not to spend a round.
-Trivial PRs: write "Trivial — no adversarial pass needed" and move on.
-
-**Reviewers, the same discipline inverted:** don't request a change you haven't traced to a
-concrete affected case (a review here once asked for a clause that reached zero shops — the author
-built it, then deleted it a round later); run deep passes *before* the first review, not between
-rounds two and three; label blocking vs discussion explicitly; retract out loud when you're wrong.
+**Reviewers:** don't request a change you haven't traced to a concrete affected case; label blocking
+vs discussion explicitly; retract out loud when you're wrong.
 
 ## Shipping flow
 
 1. **Branch off main**, one branch per issue (e.g. `fix/duplicate-language-prompt`).
 2. **Open a PR** — title includes the issue number. Fill in the PR template properly; Plan/Prediction is written *before* reviewing your own diff, not after. If it touches rendered UI (Django admin, report card images, WhatsApp message/button rendering), attach a screenshot/GIF/video — see the PR Readiness checklist.
-3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly) — after the adversarial self-review pass above, not before.
+3. **Tag a reviewer** in GitHub Discussions → Pull Requests (skip if the PR already tags one directly) — after "Before requesting review" above, not before.
 4. **Approving reviewers: Brighton, Omar, Kundai, or Munashe** — one approval before merge is expected. Madrena is not a required/approving reviewer (see "Working with Madrena") — she can still read PRs and ask questions as part of learning. **This is convention, not GitHub-enforced:** branch protection and its rulesets replacement are both unavailable on this org's plan for a private repo (same root cause as the wiki being unreachable, see #36) — nothing technically stops a merge without review or with a failing `unit_tests` check, only the team actually following this step. See #373 for the full reasoning and the options considered. The one technical backstop is at deploy time, not merge time: the production deploy refuses to run unless `unit_tests` passed on the released commit (#379) — a bad merge still lands on main and still reaches staging.
 5. **Merge** once approved — squash merge, branch deleted.
 6. **Staging auto-deploys** on every push to main (GitHub Actions, no manual step).
 7. **Production deploy** — Brighton publishes a GitHub Release, which triggers auto-deploy. The deploy aborts unless the `unit_tests` check passed on the released commit — see `docs/Deployment.md` if a release is blocked. Never deploy to prod without Brighton's explicit sign-off.
 
-### Production release steps
-
-Semver. Only Brighton publishes releases.
-
-- **Patch:** bug fixes, copy changes, infra/ops fixes, parsing improvements.
-- **Minor:** new user-facing capability.
-- **Major:** product stable, scaling beyond the pilot.
-- Rule of thumb: shop owner would notice → minor; wouldn't → patch.
-
-Prerequisites: branch merged to main, staging healthy.
-
-```bash
-git log vX.X.X..origin/main --oneline   # what's shipped since last tag
-gh release list --limit 5               # find the last tag
-gh release create vX.X.X \
-  --title "vX.X.X — <short description>" \
-  --notes "## What's in this release
-
-- Fix: <description> (#issue)"
-```
-
-`deploy-production.yml` triggers on `release: published` — no manual `fly deploy`. Monitor: https://github.com/aakitech/auto-tuck-shop/actions
+**Releases:** semver, only Brighton publishes; commands in `docs/Deployment.md`. Shop owner would
+notice → minor; wouldn't → patch; major means scaling beyond the pilot.
 
 ## Deployment
 
@@ -195,12 +139,7 @@ gh release create vX.X.X \
 
 **Prod Fly secret flips that change user-facing behavior** (e.g. `USE_TEMPLATE_MESSAGES`) go through the same staging-first discipline as code deploys — a secret change is not exempt from verification just because it isn't a code push. #237 was a real month-long silent regression caused by exactly this gap: a flag flip changed behavior for shops it wasn't meant to touch, and nothing caught it until a manual audit.
 
-Before flipping such a secret in prod:
-1. Set it on staging first, and manually verify the specific behavior it's meant to change — not just "the flag is on," but the actual user-facing outcome (e.g. for `USE_TEMPLATE_MESSAGES`: confirm a shop *within* the 24h window still gets the image card, not just that a shop *outside* it gets the template).
-2. Note which shops/cases are in vs. out of scope for the change, before flipping in prod.
-3. After flipping in prod, manually re-confirm the in-scope and out-of-scope cases both still behave as expected.
-
-This applies to secrets that change behavior, not routine rotation (e.g. an API key refresh with no logic change).
+Before flipping one in prod: set it on staging and verify the actual user-facing outcome (for `USE_TEMPLATE_MESSAGES`, a shop *within* the 24h window still gets the image card), note which shops are in vs. out of scope, then re-confirm both after the prod flip. Routine key rotation with no logic change is exempt.
 
 ## Sentry
 
@@ -228,3 +167,8 @@ fly ssh console --app auto-tuck-shop -C "python manage.py pilot_audit"
 `--hours 48` (or any number) for a wider window. Known test accounts excluded automatically: +27644178150, +27610869293.
 
 When changing parsing behavior, add/update regression tests in `unit_tests/test_shona_parsing.py`.
+
+## Keeping this file current
+
+Source of truth for any AI assistant here. Update it when the phase, a convention, or the team
+changes. Doc updates ship in the same PR as the change they affect, never as a follow-up.
