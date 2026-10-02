@@ -1,6 +1,7 @@
 {
     "company": {
-        "name_updated": "Ndazviwana — shop yenyu yaiswa se *{shop_name}*. Maita basa!"
+        "name_updated": "Ndazviwana — shop yenyu yaiswa se *{shop_name}*. Maita basa!",
+        "name_still_needed": "Ndichiri kumirira zita reshop yenyu — ingopindura nezita, semuenzaniso: *Mai Ati Mini Eatery*"
     },
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",

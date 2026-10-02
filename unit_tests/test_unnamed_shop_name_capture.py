@@ -66,15 +66,37 @@ class UnnamedShopNameCaptureTest(TransactionTestCase):
         parse_mock.assert_not_called()  # intercepted before the LLM, not a fallthrough
 
     def test_filler_reply_is_not_captured_as_a_name(self):
-        """'ok'/'thanks' must not become the shop's permanent name — falls
-        through to normal LLM processing instead, same _is_silent_greeting
-        gate already used for greeting silence."""
+        """'ok'/'thanks' must not become the shop's permanent name — uses the
+        same _is_silent_greeting gate already used for greeting silence
+        (#382). Regression for #384: this must NOT fall through to the LLM
+        (which, post-#382, would send the generic greeting_acknowledged
+        reply, ignoring the fact the bot itself just asked for the shop's
+        name) — it re-prompts instead."""
         profile = _make_profile(followup_sent=True)
         send_mock, parse_mock = self._run_message(profile, "ok")
 
         profile.company.refresh_from_db()
         self.assertEqual(profile.company.name, "Unnamed Shop")
-        parse_mock.assert_called_once()  # fell through, normal processing continued
+        parse_mock.assert_not_called()  # intercepted, re-prompted — not a fallthrough
+        send_mock.assert_called_once()
+
+    def test_shona_greeting_word_still_not_captured_as_a_name(self):
+        """Regression for #384: "Ndatenda" and "Makadii" are real Shona
+        words, but they're acknowledgments in this context, not name
+        answers — they must stay excluded from name-capture just like any
+        other greeting/filler, and get the "still need your shop's name"
+        re-prompt rather than the generic greeting reply or silence."""
+        profile = _make_profile(followup_sent=True)
+        for filler in ("Ndatenda", "Makadii", "Zvakanaka", "Ehe"):
+            with self.subTest(filler=filler):
+                profile.company.name = "Unnamed Shop"
+                profile.company.save()
+                send_mock, parse_mock = self._run_message(profile, filler)
+
+                profile.company.refresh_from_db()
+                self.assertEqual(profile.company.name, "Unnamed Shop")
+                parse_mock.assert_not_called()
+                send_mock.assert_called_once()
 
     def test_no_interception_before_followup_was_sent(self):
         """If we haven't asked yet, don't treat an incoming message as a name

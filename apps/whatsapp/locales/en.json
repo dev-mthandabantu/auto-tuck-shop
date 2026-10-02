@@ -1,6 +1,7 @@
 {
     "company": {
-        "name_updated": "Got it — your shop is now saved as *{shop_name}*. Thanks!"
+        "name_updated": "Got it — your shop is now saved as *{shop_name}*. Thanks!",
+        "name_still_needed": "I'm still waiting for your shop's name — just reply with it, e.g. *Mai Ati Mini Eatery*"
     },
     "language": {
         "prompt": "Welcome! Please choose your language:\n\nMakadii! Sarudzai mutauro wenyu:",

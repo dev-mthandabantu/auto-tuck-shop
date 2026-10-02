@@ -612,21 +612,32 @@ async def _process_message_async(
 
             # Intercept the reply to the unnamed-shop followup (#316) — only
             # while still on the "Unnamed Shop" placeholder and we've already
-            # asked. A filler reply ("ok", "thanks") must not get captured as
-            # the shop's name — same _is_silent_greeting check already used
-            # above to gate the typing indicator / greeting silence. A
+            # asked. A filler/greeting reply ("ok", "thanks", "Ndatenda") must
+            # not get captured as the shop's name — even though "Ndatenda" and
+            # "Makadii" are real Shona words, they're acknowledgments here, not
+            # shop-name answers, so they correctly stay excluded via the same
+            # _is_silent_greeting used by the greeting-reply gate (#382). A
             # sale-shaped reply ("2 Mazoe $1 each") must not get captured
             # either — the very first message after the followup could
             # legitimately be a sale, not an answer to the name question
             # (review on PR #341: without this, that sale would silently
             # become the shop's new name instead of being recorded).
+            #
+            # #384: a filler/greeting reply used to fall all the way through
+            # to the LLM, which (post-#382) sends the generic
+            # greeting_acknowledged reply — ignoring the fact that the bot
+            # itself just asked a question. Re-prompt instead, so the shop
+            # owner knows we're still waiting on the name specifically.
             if company.name == "Unnamed Shop" and company.unnamed_shop_followup_sent:
                 stripped = text.strip()
                 if stripped and not _is_silent_greeting(stripped) and not _looks_like_sale_attempt(stripped):
                     await _set_company_name(company.id, stripped)
                     await _send_response(sender, t("company.name_updated", lang=lang, shop_name=stripped))
                     return
-                # Otherwise fall through — greeting/filler, sale-shaped, or empty; not a name attempt
+                if stripped and _is_silent_greeting(stripped):
+                    await _send_response(sender, t("company.name_still_needed", lang=lang))
+                    return
+                # Otherwise fall through — sale-shaped or empty; not a name attempt
 
         try:
             result = await parse_message_unified(text, company=company, message_id=message_id)
