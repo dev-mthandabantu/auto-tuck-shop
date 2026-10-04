@@ -8,15 +8,15 @@ Everything is in `static/auto_tuck_shop/img/brand/`.
 
 | File | Use |
 |---|---|
-| `logo-lockup-on-cream.webp` | Shop icon with chat bubble next to the name, on cream |
-| `wordmark-green-on-cream.jpg` | Name only, dark green text on cream |
-| `wordmark-cream-on-green.jpg` | Name only, cream text on dark green |
+| `lockup-on-cream.png` | Shop icon next to the name, on cream |
+| `wordmark-green.png` | Name only, dark green, transparent background |
+| `wordmark-cream.png` | Name only, cream, transparent background |
 
 `static/auto_tuck_shop/img/app-icon.png` is the app icon and stays as it is.
 
-The brand files are 1600x1600 with the background baked in, so use the cream version on light backgrounds and the green version on dark ones. Don't place them on other colours.
+The wordmarks have transparent backgrounds: use the green one on light backgrounds and the cream one on dark ones. The lockup has a cream background. All three are rendered from text in Inter ExtraBold, the site's font, so ask Brighton for a re-render rather than editing the images.
 
-Spelling: write the name as **Auto Tuck Shop** in text, as the site and these docs do. The logo files currently read "Auto Tuckshop". If the team wants the two to match, the logo is the one to redo.
+Spelling: the name is **Auto Tuckshop**, with "Tuckshop" as one word, matching the WhatsApp display name. Use it everywhere: logos, the site, the bot's messages and posts. Older text that says "Auto Tuck Shop" is being updated (#396).
 
 ## Colours
 
@@ -31,7 +31,7 @@ Already in use on the public site (`static/auto_tuck_shop/css/public.css`, `:roo
 
 If a new design needs a colour that isn't here, check `public.css` first. Don't invent a fifth.
 
-## What Auto Tuck Shop is
+## What Auto Tuckshop is
 
 A WhatsApp bot that records sales for small shops. The owner sends a message the way they would say it, as text, a voice note or a photo of a tally sheet. The bot works out what was sold, sends back a summary, and saves the sale only after the owner taps Looks good.
 
