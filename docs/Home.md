@@ -8,6 +8,7 @@ An AI-powered WhatsApp bot that helps small shop owners (tuckshops) in Southern 
 
 **For the team**
 - [Pilot Launch](Pilot-Launch) — reusable success-metrics framework and Cohort 1 retro takeaways; see discussion #304 for current status
+- [Brand](Brand): logo files, colours, and tone for public-facing material
 
 **Technical reference**
 - [Architecture](Architecture) — apps, data models, message flow, async execution

@@ -79,6 +79,7 @@ Read the relevant page before starting any task (session step 3). Update docs in
 | `docs/Integrations.md` | Meta WhatsApp, OpenRouter, ElevenLabs, R2, Fly.io, Sentry |
 | `docs/Deployment.md` | Environments, deploy workflow, env vars, migrations, health check |
 | `docs/Pilot-Launch.md` | Pilot success metrics and review cadence |
+| `docs/Brand.md` | Logo files, colour palette, tone and pilot-honesty rules for public-facing material |
 | `docs/Home.md` | Overview and quick links |
 
 `docs/` is the sole source of truth. The GitHub wiki is unreachable on this plan; don't sync it (#36).
