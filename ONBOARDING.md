@@ -2,7 +2,7 @@
 
 ## What this project is
 
-Auto Tuck Shop is a WhatsApp bot that helps tuckshop owners in Zimbabwe record sales by text or voice. An owner sends a message like "2 cokes $1 each", the bot parses it with an LLM, records the sale, and sends a confirmation. Sales can be confirmed or flagged as a bot mistake via buttons.
+Auto Tuckshop is a WhatsApp bot that helps tuckshop owners in Zimbabwe record sales by text or voice. An owner sends a message like "2 cokes $1 each", the bot parses it with an LLM, records the sale, and sends a confirmation. Sales can be confirmed or flagged as a bot mistake via buttons.
 
 The codebase is a Django app. Messages arrive via the WhatsApp Business API (Meta), are parsed by Gemini 2.5 Flash via OpenRouter, and voice messages are transcribed by ElevenLabs before parsing.
 
@@ -72,7 +72,7 @@ Navigation (breadcrumb strings):
 Step-by-step:
 1. Open https://business.facebook.com and sign in to the Business Manager that owns the WhatsApp number.
 2. Use one of the breadcrumb paths above to reach the **Business profile** for the phone number you will use for the bot.
-3. Click **Edit** (or **Profile**) and set the **Display name** (example: Auto Tuck Shop).
+3. Click **Edit** (or **Profile**) and set the **Display name** (example: Auto Tuckshop).
 4. Upload a **Profile photo** (PNG or JPEG). Recommended: square image (512×512 or 640×640 px). Keep file size modest (under ~5 MB) to avoid upload issues.
 5. Save changes.
 

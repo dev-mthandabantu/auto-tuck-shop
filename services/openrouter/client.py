@@ -77,8 +77,8 @@ class OpenRouterClient:
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "https://autotuckshop.site",
-            "X-Title": "Auto Tuck Shop",
+            "HTTP-Referer": "https://auto-tuck-shop.fly.dev",
+            "X-Title": "Auto Tuckshop",
         }
 
     async def chat_completion(

@@ -9,8 +9,8 @@ from django.views.generic import TemplateView
 
 from apps.core.views import pilot_metrics
 
-admin.site.site_header = "Auto Tuck Shop Admin"
-admin.site.site_title = "Auto Tuck Shop Admin"
+admin.site.site_header = "Auto Tuckshop Admin"
+admin.site.site_title = "Auto Tuckshop Admin"
 admin.site.index_title = "Dashboard"
 
 urlpatterns = [

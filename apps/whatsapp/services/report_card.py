@@ -253,7 +253,7 @@ def generate_stat_card(
         )
 
     # Footer
-    footer = "Auto Tuck Shop"
+    footer = "Auto Tuckshop"
     fw = _tw(draw, footer, font_tiny)
     draw.text((WIDTH - PADDING - fw, HEIGHT - PADDING + 4), footer, font=font_tiny, fill=MUTED_COLOR)
 

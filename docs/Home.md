@@ -1,4 +1,4 @@
-# Auto Tuck Shop
+# Auto Tuckshop
 
 An AI-powered WhatsApp bot that helps small shop owners (tuckshops) in Southern Africa record sales by sending a text or voice message.
 

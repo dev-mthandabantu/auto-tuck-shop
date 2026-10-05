@@ -1,4 +1,4 @@
-# Auto Tuck Shop
+# Auto Tuckshop
 
 AI-powered WhatsApp assistant for tuckshops in Zimbabwe. Shop owners text or voice message what they sold (like "2 cokes $1 each"), and the bot automatically records the sale and sends a confirmation.
 

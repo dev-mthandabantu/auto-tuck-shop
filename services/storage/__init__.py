@@ -1,4 +1,4 @@
-"""Storage services for Auto Tuck Shop."""
+"""Storage services for Auto Tuckshop."""
 
 from .r2_client import R2StorageClient
 

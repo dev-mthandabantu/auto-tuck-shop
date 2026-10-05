@@ -1,4 +1,4 @@
-# Contributing to Auto Tuck Shop
+# Contributing to Auto Tuckshop
 
 ## Branch protection
 

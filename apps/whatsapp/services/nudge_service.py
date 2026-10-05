@@ -188,7 +188,7 @@ def _eligible_ctas(context: dict) -> list[dict]:
     if getattr(settings, "NUDGE_ENABLE_INVENTORY_CTA", False):
         eligible.append({"key": "inventory_restock", "text": "Are you running low on anything? Tell me and I'll track it.", "type": "text"})
     if getattr(settings, "NUDGE_ENABLE_COMMUNITY_CTA", False):
-        eligible.append({"key": "community_whatsapp", "text": "Join other Auto Tuck Shop owners on WhatsApp.", "type": "text"})
+        eligible.append({"key": "community_whatsapp", "text": "Join other Auto Tuckshop owners on WhatsApp.", "type": "text"})
     if getattr(settings, "NUDGE_ENABLE_OPTIONS_CTA", False):
         eligible.append({"key": "options_menu", "text": "Need help? Reply *help* to see what I can do.", "type": "text"})
 

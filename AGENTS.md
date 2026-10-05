@@ -33,7 +33,7 @@ Concretely, when pairing with her:
 
 ## What this is
 
-Auto Tuck Shop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voice messages to record sales. The bot parses them with an LLM (`google/gemini-2.5-flash-lite` via OpenRouter, set by `OPENROUTER_MODEL`), creates sale records, and replies with a confirmation. Voice messages are transcribed by ElevenLabs first.
+Auto Tuckshop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voice messages to record sales. The bot parses them with an LLM (`google/gemini-2.5-flash-lite` via OpenRouter, set by `OPENROUTER_MODEL`), creates sale records, and replies with a confirmation. Voice messages are transcribed by ElevenLabs first.
 
 **Gemini direct fallback:** if OpenRouter returns 402 (out of credits), `services/openrouter/client.py` retries against Gemini's own API directly via `GEMINI_API_KEY`, bypassing OpenRouter for that call. Optional but should be set on staging and prod — see `.env.example`.
 

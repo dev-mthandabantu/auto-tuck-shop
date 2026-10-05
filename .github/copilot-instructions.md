@@ -1,4 +1,4 @@
-# Auto Tuck Shop — Copilot Instructions
+# Auto Tuckshop — Copilot Instructions
 
 ## Start of every chat session
 
