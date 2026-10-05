@@ -53,7 +53,7 @@ Auto Tuckshop is a Django app. Shop owners in Zimbabwe send WhatsApp text or voi
 
 ## Current phase
 
-**Pilot paused since 2026-08-03: production live for inbound, all outbound (nudges and daily reports) off, no new cohort onboarding.** Don't approve new shop applications. Restart conditions and checklist live in **#335** (from #278); **#351** (is sales-recording the right wedge?) should land before any restart. Check #335 before assuming this is still current.
+**Pilot paused since 2026-08-03.** Production still answers inbound messages; outbound (nudges and daily reports) is off; no new shops are onboarded, so don't approve waitlist applications. The restart checklist is **#335**: if it's closed, this section is out of date, so say so.
 
 Open items live on the GitHub project board. Match any task to an open issue; check with the user first if it doesn't map to one.
 
@@ -91,10 +91,10 @@ Production is live and takes real inbound messages, so anything that breaks the 
 But the pilot is paused (see "Current phase"), and that changes what else is worth doing. With no live cohort, new user-facing behaviour has nobody to reach — it accumulates as inventory rather than shipping. Work that *does* earn its place right now:
 
 - Fixes to inbound handling — a shop that messages the bot must get a correct response.
-- Anything gating the restart (#335) or the wedge question (#351).
-- Test integrity and CI (#367, #82) — the suite protects a codebase two people are shipping into, and most of it doesn't run.
+- Work in the milestone for the next cohort, and anything on the restart checklist (#335).
+- Test integrity and CI (#82) — the suite protects a codebase several people are shipping into.
 
-New features for a cohort that isn't running belong in the backlog until the restart date is real.
+New features outside that milestone belong in the backlog until the restart.
 
 ## Keeping the backlog current
 
