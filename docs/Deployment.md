@@ -35,6 +35,8 @@ Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
 | Test APIs | -- | Enabled | Disabled |
 | R2 bucket | -- | `auto-tuck-shop-staging` | `auto-tuck-shop-production` |
 
+**Machines sleep when idle.** Both apps set `auto_stop_machines = 'stop'` and `min_machines_running = 0`, so the web machine stops when there is no traffic and starts again on the next request. That request waits a few seconds for the app to start. While the pilot is paused (since 3 Aug 2026) this saves most of the hosting cost, which was about $12 a month for two always-on machines (#397). **Before the next cohort starts, set production's `min_machines_running` back to 1** (on the #335 restart checklist), so replies to shop messages never wait on a cold start. Staging can stay at 0.
+
 ## Deploy Workflow
 
 **Staging** deploys automatically on every push to `main` (GitHub Actions).
