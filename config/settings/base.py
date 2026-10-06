@@ -200,6 +200,11 @@ ADMIN_PHONE_NUMBER = ADMIN_PHONE_NUMBERS[0] if ADMIN_PHONE_NUMBERS else None
 # Support Configuration
 SUPPORT_PHONE_NUMBER = env("SUPPORT_PHONE_NUMBER", default="")  # Shown to shop owners in the help menu (#131)
 
+# Partner contact (public /partners page, #389) — WhatsApp held back until
+# it's confirmed for public use; set PARTNER_WHATSAPP_NUMBER to show that button.
+PARTNER_CONTACT_EMAIL = env("PARTNER_CONTACT_EMAIL", default="software@aakitech.com")
+PARTNER_WHATSAPP_NUMBER = env("PARTNER_WHATSAPP_NUMBER", default="")
+
 # OpenRouter Configuration
 OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
 OPENROUTER_MODEL = env("OPENROUTER_MODEL", default="google/gemini-2.5-flash-lite")

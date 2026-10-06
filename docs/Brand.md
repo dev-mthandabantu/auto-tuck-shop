@@ -46,7 +46,7 @@ The idea behind it: software for informal retail has to fit how shops already wo
 
 ## Who we write for
 
-Funders, African tech founders and operators, and engineers and future hires. Not shop owners. After a handful of posts, a reader should think: these people understand small retailers, they test their assumptions, and I want to see what they build next.
+The public site has two audiences: `/` explains the product directly to shop owners, while `/partners` serves funders, partners and press. LinkedIn is for funders, African tech founders and operators, and engineers and future hires. After a handful of posts, a reader should think: these people understand small retailers, they test their assumptions, and I want to see what they build next.
 
 ## Tone
 

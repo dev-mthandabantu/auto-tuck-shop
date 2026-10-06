@@ -2,10 +2,12 @@
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.generic import TemplateView
 
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale
@@ -217,3 +219,16 @@ def pilot_metrics(request):
     }
 
     return render(request, "admin/pilot_metrics.html", context)
+
+
+class PartnersView(TemplateView):
+    """Public /partners page. Reads contact settings per request, not at URLconf import
+    time, so a settings change (or override_settings in tests) takes effect immediately."""
+
+    template_name = "public/partners.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["partner_contact_email"] = settings.PARTNER_CONTACT_EMAIL
+        context["partner_whatsapp_number"] = settings.PARTNER_WHATSAPP_NUMBER
+        return context

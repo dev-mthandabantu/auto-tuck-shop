@@ -4,17 +4,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Auto Tuck Shop{% endblock %}</title>
-  <meta name="description" content="{% block description %}Auto Tuck Shop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
+  <title>{% block title %}Auto Tuckshop{% endblock %}</title>
+  <meta name="description" content="{% block description %}Auto Tuckshop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
   <meta name="theme-color" content="#123c2d">
   <link rel="icon" type="image/png" href="{% static 'auto_tuck_shop/img/app-icon.png' %}">
   <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Auto Tuck Shop">
-  <meta property="og:title" content="{% block og_title %}Auto Tuck Shop{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Auto Tuck Shop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
+  <meta property="og:site_name" content="Auto Tuckshop">
+  <meta property="og:title" content="{% block og_title %}Auto Tuckshop{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Auto Tuckshop helps tuck shops record sales, voice notes, and daily reports through WhatsApp.{% endblock %}">
   <meta property="og:image" content="{% block og_image %}{% static 'auto_tuck_shop/img/app-icon.png' %}{% endblock %}">
   <link rel="stylesheet" href="{% static 'auto_tuck_shop/css/public.css' %}">
+  <noscript><style>.nav-toggle { display: none !important; } .mobile-nav[hidden] { display: flex !important; }</style></noscript>
 </head>
 <body>
   <div class="site-shell">
@@ -22,18 +23,31 @@
       <nav class="nav" aria-label="Primary navigation">
         <a class="brand" href="{% url 'home' %}">
           <img src="{% static 'auto_tuck_shop/img/app-icon.png' %}" alt="" width="42" height="42">
-          <span>Auto Tuck Shop</span>
+          <span>Auto Tuckshop</span>
         </a>
         <div class="nav-links">
           <a href="{% url 'home' %}#product">Product</a>
           <a href="{% url 'home' %}#how-it-works">How it works</a>
           <a href="{% url 'home' %}#trust">Trust</a>
           <a href="{% url 'home' %}#story">Story</a>
-          <a href="{% url 'home' %}#team">Team</a>
+          <a href="{% url 'partners' %}">For partners</a>
           <a href="{% url 'privacy' %}">Privacy</a>
-          <a class="button secondary" href="{% url 'data_deletion' %}">Delete data</a>
         </div>
+        <button type="button" class="nav-toggle" aria-expanded="false" aria-controls="mobile-nav">
+          <span class="nav-toggle-bar"></span>
+          <span class="nav-toggle-bar"></span>
+          <span class="nav-toggle-bar"></span>
+          <span class="sr-only">Menu</span>
+        </button>
       </nav>
+      <div class="mobile-nav" id="mobile-nav" hidden>
+        <a href="{% url 'home' %}#product">Product</a>
+        <a href="{% url 'home' %}#how-it-works">How it works</a>
+        <a href="{% url 'home' %}#trust">Trust</a>
+        <a href="{% url 'home' %}#story">Story</a>
+        <a href="{% url 'partners' %}">For partners</a>
+        <a href="{% url 'privacy' %}">Privacy</a>
+      </div>
     </header>
 
     <main>
@@ -43,10 +57,11 @@
     <footer class="site-footer">
       <div class="footer-inner">
         <div>
-          <strong>Auto Tuck Shop</strong>
+          <strong>Auto Tuckshop</strong>
           <div>Your shop memory on WhatsApp.</div>
         </div>
         <div class="footer-links">
+          <a href="{% url 'partners' %}">For partners</a>
           <a href="{% url 'privacy' %}">Privacy</a>
           <a href="{% url 'terms' %}">Terms</a>
           <a href="{% url 'data_deletion' %}">Data deletion</a>
@@ -55,5 +70,7 @@
       </div>
     </footer>
   </div>
+  <script src="{% static 'auto_tuck_shop/js/site-nav.js' %}" defer></script>
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

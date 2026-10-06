@@ -1,0 +1,275 @@
+{% extends "public/base.html" %}
+{% load static %}
+
+{% block title %}Auto Tuckshop | For funders, partners and press{% endblock %}
+{% block description %}Who built Auto Tuckshop, what it's learned so far, and how to get in touch.{% endblock %}
+{% block og_title %}Auto Tuckshop | For funders, partners and press{% endblock %}
+{% block og_description %}Who built Auto Tuckshop, what it's learned so far, and how to get in touch.{% endblock %}
+{% block og_image %}{% static 'auto_tuck_shop/img/marketing-demo-report.png' %}{% endblock %}
+
+{% block content %}
+<section class="sections" id="partners-intro">
+  <div class="section-heading">
+    <p class="eyebrow">For partners</p>
+    <h1>Auto Tuckshop, for funders, partners and press.</h1>
+    <p>Auto Tuckshop records tuck shop sales on WhatsApp. This page is for people thinking about the product from the outside: what it's building towards, who's building it, and how to reach us.</p>
+  </div>
+</section>
+
+<section class="story-band display" id="thesis">
+  <div class="story-grid sections">
+    <div>
+      <p class="eyebrow">The thesis</p>
+      <h2>Sales records today. Financial access tomorrow.</h2>
+      <p>
+        A sale recorded on WhatsApp becomes part of a shop's financial history. Over time, that history is what could open the door to credit or supplier finance, something most informal shops have no path to today.
+      </p>
+    </div>
+    <div class="thesis-flow">
+      <article>
+        <span>Month 1</span>
+        <strong>Daily sales records</strong>
+        <p>Voice and text messages become confirmed transactions.</p>
+      </article>
+      <article>
+        <span>Month 6</span>
+        <strong>A clearer picture of the shop</strong>
+        <p>Patterns emerge across sales, products and busy days.</p>
+      </article>
+      <article>
+        <span>Future, if owners choose</span>
+        <strong>Financial access</strong>
+        <p>Those records may one day help a shop apply for credit or supplier finance. We don't share them with lenders today.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="sections founder-panel">
+  <div class="founder-card">
+    <img src="{% static 'auto_tuck_shop/img/team-madrena.jpg' %}" alt="Madrena">
+    <div>
+      <p class="eyebrow">Why we built this</p>
+      <h2>Built close to the problem.</h2>
+      <p>
+        Madrena grew up in rural Chipinge, ran a small tuck shop herself, taught herself programming, and now ships production code for the same kind of shopkeeping reality Auto Tuckshop serves.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section class="sections" id="team">
+  <div class="section-heading">
+    <h2>Built by AakiTech.</h2>
+    <p>Auto Tuckshop is built by <a href="https://aakitech.com" target="_blank" rel="noopener">AakiTech</a>, a Zimbabwean team building practical software for African small businesses.</p>
+  </div>
+  <div class="team-grid">
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-brighton.jpg' %}" alt="Brighton" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">BR</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Brighton</strong>
+        <span class="team-role">Product &amp; engineering lead</span>
+        <p class="team-bio">Leads product direction, engineering, and turning what the pilot teaches into shipped changes.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-madrena.jpg' %}" alt="Madrena" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">MA</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Madrena</strong>
+        <span class="team-role">Product engineer</span>
+        <p class="team-bio">Builds features, drawing on her own tuck-shop experience.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-kundai.jpg' %}" alt="Kundai Clayton" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">KC</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Kundai Clayton</strong>
+        <span class="team-role">Technical strategy &amp; architecture</span>
+        <p class="team-bio">Guides the technical direction of the product and how it's built.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-munashe.jpg' %}" alt="Munashe" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">MU</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Munashe</strong>
+        <span class="team-role">Software engineering</span>
+        <p class="team-bio">Builds the software behind Auto Tuckshop.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-law.jpg' %}" alt="Law" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">LA</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Law</strong>
+        <span class="team-role">Partnerships &amp; field operations</span>
+        <p class="team-bio">Leads the next Zimbabwe cohort and product quality.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-bradley.jpg' %}" alt="Bradley" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">BD</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Bradley</strong>
+        <span class="team-role">Field &amp; shop relationships</span>
+        <p class="team-bio">Works directly with shop owners on the ground, building the relationships the pilot runs on.</p>
+      </div>
+    </article>
+    <article class="team-card">
+      <div class="team-photo-wrap">
+        <img class="team-photo" src="{% static 'auto_tuck_shop/img/team-omar.jpg' %}" alt="Omar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="team-photo-fallback" style="display:none">O</div>
+      </div>
+      <div class="team-info">
+        <strong class="team-name">Omar</strong>
+        <span class="team-role">Engineering &amp; quality</span>
+        <p class="team-bio">Builds and tests the product, making sure it works the way shop owners expect.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="sections" id="contact">
+  <div class="section-heading">
+    <p class="eyebrow">Get in touch</p>
+    <h2>Tell us who you are and what you'd like to talk about.</h2>
+  </div>
+
+  <noscript>
+    <p>
+      Email us directly: <a href="mailto:{{ partner_contact_email }}">{{ partner_contact_email }}</a>
+    </p>
+  </noscript>
+
+  <form id="partner-contact" class="contact-form" data-email="{{ partner_contact_email }}" data-whatsapp="{{ partner_whatsapp_number }}" hidden>
+    <div class="contact-grid">
+      <div class="contact-steps-col">
+        <div class="contact-steps" aria-hidden="true">
+          <span class="contact-step-bar" data-step="0"></span>
+          <span class="contact-step-bar" data-step="1"></span>
+          <span class="contact-step-bar" data-step="2"></span>
+        </div>
+
+        <fieldset class="contact-panel" data-step="0">
+          <legend>1. Who are you?</legend>
+          <div class="contact-options" role="radiogroup" aria-label="Who are you">
+            <label class="contact-option">
+              <input type="radio" name="who" value="Funder or grant programme">
+              <span>Funder or grant programme</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="who" value="Distribution or retail partner (wholesaler, FMCG, MFI)">
+              <span>Distribution or retail partner (wholesaler, FMCG, MFI)</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="who" value="Press or researcher">
+              <span>Press or researcher</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="who" value="Shop owner">
+              <span>Shop owner</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="who" value="Other">
+              <span>Other</span>
+            </label>
+          </div>
+          <input type="text" class="contact-other-input" name="who_other" placeholder="Tell us in a few words" hidden>
+        </fieldset>
+
+        <div class="contact-panel contact-shop-owner-redirect" data-step="shop-owner" hidden>
+          <p>Shop owners don't need to fill in a form. The fastest way to reach us is WhatsApp:</p>
+          <a class="button" href="https://wa.me/263719550572?text=Hi%20Auto%20Tuckshop" target="_blank" rel="noopener">Join the waitlist on WhatsApp</a>
+          <button type="button" class="contact-back-link" data-action="restart">Not a shop owner? Go back</button>
+        </div>
+
+        <fieldset class="contact-panel" data-step="1" hidden>
+          <legend>2. What would you like to talk about?</legend>
+          <div class="contact-options" role="radiogroup" aria-label="What would you like to talk about">
+            <label class="contact-option">
+              <input type="radio" name="topic" value="Funding or grants">
+              <span>Funding or grants</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="topic" value="A distribution partnership">
+              <span>A distribution partnership</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="topic" value="The pilot report">
+              <span>The pilot report</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="topic" value="Press or an interview">
+              <span>Press or an interview</span>
+            </label>
+            <label class="contact-option">
+              <input type="radio" name="topic" value="Other">
+              <span>Something else</span>
+            </label>
+          </div>
+          <input type="text" class="contact-other-input" name="topic_other" placeholder="Tell us in a few words" hidden>
+        </fieldset>
+
+        <fieldset class="contact-panel" data-step="2" hidden>
+          <legend>3. Your details</legend>
+          <label class="contact-field">
+            <span>Name</span>
+            <input type="text" name="name" autocomplete="name" required>
+          </label>
+          <label class="contact-field">
+            <span>Organisation</span>
+            <input type="text" name="organisation" autocomplete="organization">
+          </label>
+          <label class="contact-field">
+            <span>Email or phone</span>
+            <input type="text" name="contact_info" autocomplete="email" required>
+          </label>
+          <label class="contact-field">
+            <span>Message (optional)</span>
+            <textarea name="message" maxlength="300" rows="3"></textarea>
+          </label>
+        </fieldset>
+
+        <div class="contact-nav">
+          <button type="button" class="button secondary" data-action="back" disabled>Back</button>
+          <button type="button" class="button" data-action="next">Next</button>
+        </div>
+      </div>
+
+      <div class="contact-preview-col">
+        <div class="contact-preview" aria-live="polite">
+          <p class="eyebrow">Your message</p>
+          <pre class="contact-preview-text"></pre>
+        </div>
+
+        <div class="contact-send" hidden>
+          <a class="button light" data-action="send-email" href="#">Send by email</a>
+          {% if partner_whatsapp_number %}
+          <a class="button secondary-light" data-action="send-whatsapp" href="#" target="_blank" rel="noopener" hidden>Send on WhatsApp</a>
+          {% endif %}
+        </div>
+        <p class="contact-reassurance">Nothing is sent until you press send. It opens your email{% if partner_whatsapp_number %} or WhatsApp{% endif %}.</p>
+      </div>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'auto_tuck_shop/js/partners-contact.js' %}" defer></script>
+{% endblock %}

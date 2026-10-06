@@ -7,7 +7,7 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import TemplateView
 
-from apps.core.views import pilot_metrics
+from apps.core.views import PartnersView, pilot_metrics
 
 admin.site.site_header = "Auto Tuckshop Admin"
 admin.site.site_title = "Auto Tuckshop Admin"
@@ -15,6 +15,7 @@ admin.site.index_title = "Dashboard"
 
 urlpatterns = [
     path("", TemplateView.as_view(template_name="index.html"), name="home"),
+    path("partners/", PartnersView.as_view(), name="partners"),
     path("privacy/", TemplateView.as_view(template_name="public/privacy.html"), name="privacy"),
     path("terms/", TemplateView.as_view(template_name="public/terms.html"), name="terms"),
     path(
