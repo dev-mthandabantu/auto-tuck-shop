@@ -48,6 +48,18 @@ The idea behind it: software for informal retail has to fit how shops already wo
 
 The public site has two audiences: `/` explains the product directly to shop owners, while `/partners` serves funders, partners and press. LinkedIn is for funders, African tech founders and operators, and engineers and future hires. After a handful of posts, a reader should think: these people understand small retailers, they test their assumptions, and I want to see what they build next.
 
+## The website is the common public story
+
+The website is read by shop owners, funders, partners, applicants, future hires and the team. It cannot take on a different company structure for each opportunity, so it should stay compatible with all of them.
+
+- Describe people through function, contribution, qualifications, lived experience and outcomes.
+- Show leadership through prominence, responsibility and demonstrated work.
+- Do not add fixed founder hierarchy, employment status, ownership or an AakiTech–Auto Tuckshop legal relationship merely to support one application or campaign.
+- Strengthen funding and partnership cases with verified product evidence that remains useful to every audience.
+- Keep opportunity-specific founder and venture positioning in the relevant application, deck or conversation.
+
+Requests to change the site for a specific funding or partnership narrative should be checked against the private [strategic-positioning framework](https://github.com/aakitech/internal/blob/main/strategy/positioning.md). Access to that repository is intentionally restricted; anyone without access should ask Brighton or another lead for the public wording selected for the opportunity.
+
 ## Tone
 
 - Write like a person explaining it to a colleague. No "thrilled to announce", "revolutionising" or "empowering".
