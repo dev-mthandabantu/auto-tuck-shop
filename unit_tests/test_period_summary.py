@@ -102,7 +102,7 @@ class FormatPeriodSummaryTest(TestCase):
 
     def test_no_sales(self):
         data = {"sales_count": 0, "revenue": Decimal("0.00"), "currency_revenues": {}, "currency": "USD", "top_products": []}
-        self.assertIn("No sales recorded", format_period_summary("This week", data))
+        self.assertIn("No sales", format_period_summary("This week", data))
 
     def test_single_currency(self):
         data = {

@@ -42,7 +42,23 @@ class Product(models.Model):
         blank=True,
         related_name="category_products",
     )
-    cost = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="What the owner pays per unit right now. NULL = not known yet (not the same as free).",
+    )
+    cost_currency = models.CharField(
+        max_length=3,
+        null=True,
+        blank=True,
+        help_text="Currency of `cost`. NULL when cost is unknown.",
+    )
+    cost_ask_count = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="How many times the bot has asked for this product's cost price — it stops after 2",
+    )
     active = models.BooleanField(default=True)
 
     class Meta:
@@ -54,6 +70,14 @@ class Product(models.Model):
                 condition=models.Q(sku__isnull=False),
             )
         ]
+
+    def save(self, *args, **kwargs):
+        # A cost needs a currency to be usable in profit. The bot always sets one;
+        # this covers a cost typed straight into the admin, defaulting to the
+        # shop's own currency rather than leaving the cost unusable.
+        if self.cost is not None and not self.cost_currency and self.company_id:
+            self.cost_currency = self.company.currency
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

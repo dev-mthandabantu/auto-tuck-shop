@@ -459,6 +459,7 @@ async def _handle_sales_query(
         build_comparison_context,
         build_period_summary,
         format_period_summary,
+        resolve_period,
         upload_report_image,
         format_business_summary,
     )
@@ -472,22 +473,24 @@ async def _handle_sales_query(
     today = timezone.localdate()
     timeframe = result.timeframe or "today"
 
-    # Multi-day aggregates — return text only, no image card
-    if timeframe == "week":
-        monday = today - timedelta(days=today.weekday())
-        data = await _s2a(build_period_summary, thread_sensitive=True)(company, monday, today)
-        label = f"This week ({monday.strftime('%d %b')} - {today.strftime('%d %b')})"
-        await _send_response(sender, format_period_summary(label, data))
+    # What a shop pays for stock is the owner's private information (#409): an
+    # assistant can ask about sales but never gets profit, and a direct profit
+    # question gets a short "owner only" reply.
+    from apps.whatsapp.services.cost_handler import is_owner
+    show_profit = is_owner(user_profile)
+    metric = getattr(result, "metric", "revenue")
+    if metric == "profit" and not show_profit:
+        await _send_response(sender, t("cost.profit_owner_only", lang=lang))
         return
-    elif timeframe == "month":
-        first = today.replace(day=1)
-        data = await _s2a(build_period_summary, thread_sensitive=True)(company, first, today)
-        await _send_response(sender, format_period_summary(today.strftime("%B"), data))
-        return
-    elif timeframe == "year":
-        first = today.replace(month=1, day=1)
-        data = await _s2a(build_period_summary, thread_sensitive=True)(company, first, today)
-        await _send_response(sender, format_period_summary(str(today.year), data))
+
+    # Multi-day aggregates (and any profit question) — return text only, no image card
+    period = resolve_period(
+        timeframe, getattr(result, "period_count", None), today, force_range=(metric == "profit"), lang=lang
+    )
+    if period:
+        start, end, label = period
+        data = await _s2a(build_period_summary, thread_sensitive=True)(company, start, end)
+        await _send_response(sender, format_period_summary(label, data, lang=lang, metric=metric, show_profit=show_profit))
         return
 
     # Single-day queries — today or yesterday, with image card
@@ -505,7 +508,7 @@ async def _handle_sales_query(
         return
 
     comparison = await _s2a(build_comparison_context, thread_sensitive=True)(company, report_date)
-    text_summary = format_business_summary(snapshot, lang=lang)
+    text_summary = format_business_summary(snapshot, lang=lang, show_profit=show_profit)
 
     image_url = None
     try:
@@ -655,6 +658,18 @@ async def _process_message_async(
                     await _send_response(sender, t("closing.normal_time_set", lang=lang, time=time_label))
                     return
 
+            # Intercept the reply to a cost-price question (#409) before anything
+            # else reads a bare "bread 0.80" as a sale or a closing time. Only
+            # claims the message when it clearly answers the question.
+            from apps.whatsapp.services.cost_handler import handle_pending_cost_reply
+            closing_prompt_open = company.last_closing_prompt_date == today and not (
+                company.daily_closing_date == today and company.daily_closing_time
+            )
+            if await handle_pending_cost_reply(
+                sender, company, text, lang, user_profile=user_profile, closing_prompt_open=closing_prompt_open
+            ):
+                return
+
             # Intercept daily closing time reply — only when a prompt was sent today.
             closing_set_today = company.daily_closing_date == today and company.daily_closing_time
             if company.last_closing_prompt_date == today and not closing_set_today:
@@ -743,6 +758,11 @@ async def _process_message_async(
 
         if result.intent == "sales_query":
             await _handle_sales_query(sender, user_profile, result, lang=lang)
+            return
+
+        if result.intent == "set_cost" and company:
+            from apps.whatsapp.services.cost_handler import handle_set_cost_intent
+            await handle_set_cost_intent(sender, company, result, lang, user_profile=user_profile)
             return
 
         if result.intent == "other":

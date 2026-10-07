@@ -66,6 +66,8 @@ Requests to change the site for a specific funding or partnership narrative shou
 - One idea per post. Short paragraphs, one to three lines each.
 - Use a real message, a screenshot or a decision the team made as evidence. Say what didn't work, because it builds more trust than a highlight reel.
 - Show messy input on purpose: Shona and English mixed, voice notes, several currencies in one message.
+- In Shona, "cost" is what the shop pays and "mutengo" is what the customer pays. Do not use "mutengo" for what the shop pays.
+- In Shona, an assistant is a "mutengesi" (plural "vatengesi"), never "mubatsiri". Use one word for one role in every string.
 
 ## Staying honest about the pilot
 

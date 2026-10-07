@@ -34,6 +34,19 @@ class Company(models.Model):
         help_text="Sale awaiting currency clarification from the owner",
     )
 
+    # Cost-price question (#409): products the bot just asked the owner to price,
+    # so a bare "bread 0.80" reply is read as a cost and never as a sale.
+    pending_cost_product_ids = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Product ids the bot asked the owner to give a cost price for",
+    )
+    pending_cost_asked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the cost-price question was sent — the question expires after a few hours",
+    )
+
     # Nudge system
     first_message_date = models.DateField(null=True, blank=True, help_text="Date of first inbound message — nudge eligibility starts here")
     last_nudge_date = models.DateField(null=True, blank=True, help_text="Last date a nudge was sent — prevents double-sending")

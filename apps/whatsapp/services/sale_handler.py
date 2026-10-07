@@ -12,7 +12,7 @@ from apps.catalog.models import ProductPrice
 from apps.core.currencies import format_price
 from apps.core.models import Company
 from apps.sales.models import Sale
-from apps.sales.services import create_sale_from_parsed_items, PriceOverflowError
+from apps.sales.services import create_sale_from_parsed_items, snapshot_item_costs, PriceOverflowError
 from apps.whatsapp.services.webhook_handler import (
     db_sync_to_async,
     DEFAULT_LANGUAGE,
@@ -114,6 +114,7 @@ def _get_confirmed_sale(original_message_sid: str | None):
                         price=item.unit_price,
                         currency=item.currency,
                     )
+        snapshot_item_costs(sale)
         sale.status = Sale.Status.CONFIRMED
         sale.save(update_fields=["status"])
 
@@ -278,7 +279,29 @@ async def process_sale_button_action_async(
         result = await _get_confirmed_sale(original_message_sid)
         if result:
             sale, original_whatsapp_message_id = result
-            await _send_response(sender, t("sale.confirmed_ok", lang=lang), reply_to=original_whatsapp_message_id)
+            # If any product has no cost price yet, fold the cost question into the
+            # "sale recorded" message (#409). The sale is already confirmed, so this
+            # never blocks it, and failing here must not turn it into an error reply.
+            confirmed_text = t("sale.confirmed_ok", lang=lang)
+            try:
+                from apps.whatsapp.services.cost_handler import (
+                    is_owner,
+                    open_cost_question_after_sale,
+                    sale_confirmed_with_cost_question,
+                )
+                # An assistant is never asked: they often don't know what the owner pays, and a
+                # guessed cost would quietly make the owner's profit wrong.
+                if is_owner(profile):
+                    products = await open_cost_question_after_sale(sale.company_id, sale.id)
+                    if products:
+                        confirmed_text = sale_confirmed_with_cost_question(products, lang)
+                else:
+                    # The assistant is never asked, but the owner is, when they can be reached.
+                    from apps.whatsapp.services.cost_handler import ask_owner_after_assistant_sale
+                    await ask_owner_after_assistant_sale(sale.company_id, sale.id)
+            except Exception:
+                logger.exception("Failed to open cost question after sale %s", sale.id)
+            await _send_response(sender, confirmed_text, reply_to=original_whatsapp_message_id)
             # After first confirmed sale, ask for closing time via buttons
             if await _company_needs_closing_time(sale.company_id) and await _is_first_confirmed_sale(sale.company_id):
                 await asyncio.sleep(3)

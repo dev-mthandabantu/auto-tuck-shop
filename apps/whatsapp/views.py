@@ -26,6 +26,7 @@ from apps.whatsapp.services.webhook_handler import (
     handle_waitlisted_message,
     run_async,
 )
+from apps.whatsapp.services.cost_handler import handle_cost_confirm_button
 from apps.whatsapp.services.sale_handler import handle_currency_clarification
 
 logger = logging.getLogger(__name__)
@@ -405,6 +406,8 @@ class WhatsAppWebhookView(View):
             handle_closing_time_button_action(sender=sender, button_id=button_id)
         elif button_id in ("currency_usd", "currency_zwg", "currency_zar"):
             handle_currency_clarification(sender=sender, button_id=button_id)
+        elif button_id.startswith("costyes_") or button_id == "costno":
+            handle_cost_confirm_button(sender=sender, button_id=button_id)
         else:
             # No code-side handler for this button_id — most commonly a
             # quick-reply button on a Meta-approved template (e.g.

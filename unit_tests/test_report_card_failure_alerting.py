@@ -50,8 +50,6 @@ def _make_snapshot(company_id, sales_count=1, report_date=None):
         items_sold=2,
         revenue=Decimal("20.00"),
         currency_revenues={"USD": Decimal("20.00")},
-        cost=Decimal("0.00"),
-        gross_profit=Decimal("20.00"),
         top_products=[("books", 2)],
         low_stock_items=[],
         out_of_stock_items=[],

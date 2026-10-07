@@ -323,3 +323,49 @@ class ShonaParsingTestCase(TestCase):
         self.assertIn("beef", item["product_name"].lower())
         self.assertEqual(item["quantity"], 1)
         self.assertEqual(item["unit_price"], Decimal("0.50"))
+
+    # ------------------------------------------------------------------
+    # Cost price vs selling price (#409)
+    # ------------------------------------------------------------------
+
+    def test_cost_statement_is_set_cost_not_a_sale(self):
+        """'bread costs me $0.80' is what the owner pays, so it must not be recorded as a sale."""
+        result = self._parse("bread costs me $0.80")
+        self.assertEqual(result.intent, "set_cost")
+        self.assertEqual(len(result.cost_items), 1)
+        self.assertIn("bread", result.cost_items[0].product_name.lower())
+        self.assertEqual(result.cost_items[0].cost, Decimal("0.80"))
+
+    def test_shona_cost_statement_is_set_cost(self):
+        """'ndinotenga bread pa$0.80' (I buy bread at $0.80) is a cost, not a sale."""
+        result = self._parse("ndinotenga bread pa$0.80")
+        self.assertEqual(result.intent, "set_cost")
+        self.assertEqual(result.cost_items[0].cost, Decimal("0.80"))
+
+    def test_quantity_and_price_stays_a_sale_even_with_cost_word_nearby(self):
+        """A quantity with a price is a sale, never a cost update."""
+        result = self._parse("sold 2 bread $1 each")
+        self.assertEqual(result.intent, "sale")
+
+    # ------------------------------------------------------------------
+    # Profit and rolling-period questions (#409)
+    # ------------------------------------------------------------------
+
+    def test_past_two_days_is_a_rolling_two_day_query(self):
+        result = self._parse("how much did I make these past 2 days")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "days")
+        self.assertEqual(result.period_count, 2)
+        self.assertEqual(result.metric, "revenue")
+
+    def test_profit_over_last_two_weeks(self):
+        result = self._parse("how much profit did I make in the last 2 weeks")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "weeks")
+        self.assertEqual(result.period_count, 2)
+        self.assertEqual(result.metric, "profit")
+
+    def test_this_week_stays_week_not_weeks(self):
+        result = self._parse("what is my profit this week")
+        self.assertEqual(result.timeframe, "week")
+        self.assertEqual(result.metric, "profit")

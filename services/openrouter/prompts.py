@@ -27,7 +27,22 @@ INTENT TYPES:
 - "remove_assistant": Removing a team member (e.g., "remove assistant +27821234567", "delete assistant +27821234567")
 - "sales_query": Asking about past sales (e.g., "how much did I make today?", "what did I sell this week?")
 - "language_switch": Owner or assistant wants the bot to reply in a different language from now on (e.g., "switch to shona", "respond in english", "please use English", "can you speak Shona", "change my language to Shona")
+- "set_cost": Owner states what they PAY to buy a product (its cost price), not what a customer paid (e.g., "bread costs me $0.80", "I buy eggs at 20 cents each", "change bread cost to 1 usd")
 - "other": General messages that don't fit above (greetings, deferrals, questions, acknowledgements)
+
+FOR "sales_query" INTENT:
+- "timeframe" is one of "today", "yesterday", "week" (this week, Monday to today), "month" (this month), "year" (this year), "days" or "weeks".
+- For "days" or "weeks", also set "period_count" to the number N. These are rolling windows ending today: "past 2 days" / "last 2 days" / "these 2 days" → timeframe "days", period_count 2. "last 2 weeks" / "past 2 weeks" → "weeks", 2. "last week" or "past week" with no number → "weeks", 1. "last 10 days" → "days", 10.
+- "this week" is always "week", never "weeks".
+- "metric" is "profit" when the owner asks about profit, gain, or what they made AFTER costs ("how much profit did I make this week?", "what's my profit these past 2 days?", "ndakawana purofiti yakawanda sei?"). Otherwise it is "revenue" — including plain "how much did I make / sell ...", which asks about sales.
+- Examples: "how much did I make these past 2 days?" → timeframe "days", period_count 2, metric "revenue" | "how much profit did I make last 2 weeks?" → timeframe "weeks", period_count 2, metric "profit" | "profit today" → timeframe "today", metric "profit"
+
+FOR "set_cost" INTENT:
+- Use "set_cost" ONLY when the message says the owner is paying/buying/costing: words like "cost", "costs", "costs me", "cost price", "I pay", "I buy at", "I bought at", "buying price", "ndinotenga", "mutengo wekutenga". A cost price is what the SHOP pays its supplier.
+- A message with a quantity or a selling word ("sold", "2 bread $1", "ndatengesa") is a SALE, even if it contains the word "cost". When in doubt between sale and set_cost, choose "sale".
+- Extract each product as {"product_name": "bread", "cost": 0.80, "currency": "USD" or null}. "cost" is the price for ONE unit. If the owner gave no amount, set "cost" to null.
+- Detect currency from the same phrase as the amount, using the same rules as sales ("25 cents" → 0.25 USD).
+- Examples: "bread costs me $0.80" → items: [{"product_name": "bread", "cost": 0.80, "currency": "USD"}] | "I buy eggs at 20 cents each" → [{"product_name": "eggs", "cost": 0.20, "currency": "USD"}] | "cost price of coke R8" → [{"product_name": "coke", "cost": 8, "currency": "ZAR"}] | "books cost 1 usd" → [{"product_name": "books", "cost": 1, "currency": "USD"}] | "ndinotenga bread pa$0.80" → [{"product_name": "bread", "cost": 0.80, "currency": "USD"}] | "2 bread $1" → this is a SALE, not set_cost
 
 FOR "language_switch" INTENT:
 - Extract the requested language as "target_language": "en" for English, "sn" for Shona
@@ -125,8 +140,11 @@ Shona examples:
 
 RESPONSE FORMAT (JSON):
 {
-    "intent": "sale" | "add_assistant" | "remove_assistant" | "sales_query" | "language_switch" | "other",
+    "intent": "sale" | "add_assistant" | "remove_assistant" | "sales_query" | "language_switch" | "set_cost" | "other",
     "confidence": 0.0 to 1.0,
+
+    // For "set_cost" intent only:
+    "items": [{"product_name": "name", "cost": 0.80 or null, "currency": "USD" or null}],
 
     // For "sale" intent only:
     "items": [{"product_name": "name", "quantity": 1, "unit_price": 10.00 or null, "currency": "USD" or null}],
@@ -136,7 +154,9 @@ RESPONSE FORMAT (JSON):
     "phone_number": "+27821234567" or null,
 
     // For "sales_query" intent only:
-    "timeframe": "today" | "yesterday" | "week" | "month" | "year" | null,
+    "timeframe": "today" | "yesterday" | "week" | "month" | "year" | "days" | "weeks" | null,
+    "period_count": number of days or weeks (only with "days"/"weeks") or null,
+    "metric": "revenue" | "profit",
     "product_filter": "product name" or null,
 
     // For "language_switch" intent only:
@@ -154,6 +174,7 @@ IMPORTANT:
 - For "add_assistant": phone_number is REQUIRED
 - For "remove_assistant": phone_number is REQUIRED
 - For "language_switch": target_language is REQUIRED
+- For "set_cost": items array is REQUIRED
 - For "other": other_sub_intent is REQUIRED
 - Unused fields should be null or omitted
 """

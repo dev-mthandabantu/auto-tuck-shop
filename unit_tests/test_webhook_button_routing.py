@@ -119,3 +119,33 @@ class TemplateButtonRoutingTest(TransactionTestCase):
         with patch.object(self.view, "_handle_button_response") as mock_handle:
             self.view._handle_message(message)
         mock_handle.assert_not_called()
+
+
+class CostButtonRoutingTest(TransactionTestCase):
+    """The cost-confirmation buttons (#409) must reach the cost handler through the real
+    webhook dispatch, not just when the handler is called directly."""
+
+    def setUp(self):
+        self.company = _make_company()
+        self.profile = _make_profile(self.company)
+        self.view = WhatsAppWebhookView()
+
+    def _tap(self, button_id):
+        mock_client = MagicMock()
+        mock_client.mark_as_read = AsyncMock(return_value=None)
+        with patch("apps.whatsapp.views.handle_cost_confirm_button") as handler, \
+             patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=mock_client):
+            self.view._handle_message(_interactive_button_message(button_id=button_id))
+        return handler
+
+    def test_yes_button_reaches_the_cost_handler(self):
+        handler = self._tap("costyes_5_USD_8")
+
+        handler.assert_called_once()
+        self.assertEqual(handler.call_args.kwargs["button_id"], "costyes_5_USD_8")
+
+    def test_no_button_reaches_the_cost_handler(self):
+        handler = self._tap("costno")
+
+        handler.assert_called_once()
+        self.assertEqual(handler.call_args.kwargs["button_id"], "costno")

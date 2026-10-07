@@ -100,6 +100,14 @@ async def process_audio_message_async(
             await _send_response(sender, t("audio.transcription_failed", lang=lang))
             return
 
+        # A voice answer to an open cost-price question: read it the same way as a text
+        # one, so a spoken "bread 0.80" is not recorded as a sale (#409). Anything that
+        # doesn't clearly answer it carries on to normal parsing and closes the question.
+        if company:
+            from apps.whatsapp.services.cost_handler import handle_pending_cost_reply
+            if await handle_pending_cost_reply(sender, company, transcribed_text, lang, user_profile=user_profile):
+                return
+
         try:
             result = await parse_message_unified(transcribed_text, company=company, message_id=message_id)
         except Exception as e:
@@ -122,6 +130,11 @@ async def process_audio_message_async(
         if result.intent == "add_assistant":
             from apps.whatsapp.services.waitlist_handler import handle_add_assistant
             await handle_add_assistant(sender, transcribed_text, user_profile, result)
+            return
+
+        if result.intent == "set_cost" and company:
+            from apps.whatsapp.services.cost_handler import handle_set_cost_intent
+            await handle_set_cost_intent(sender, company, result, lang, user_profile=user_profile)
             return
 
         await process_sale_message_unified(

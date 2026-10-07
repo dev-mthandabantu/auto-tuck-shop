@@ -77,6 +77,14 @@ class SaleItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     currency = models.CharField(max_length=3, null=True, blank=True)
+    unit_cost = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Cost per unit when this sale was confirmed. NULL = unknown; excluded from profit.",
+    )
+    cost_currency = models.CharField(max_length=3, null=True, blank=True)
 
     class Meta:
         ordering = ["id"]

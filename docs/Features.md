@@ -68,6 +68,7 @@ Each day, every active shop receives an automatic end-of-day business summary.
 - "Best day this week" badge (when applicable)
 - Top sellers (minimum 3 units sold to qualify)
 - Weekly bar chart (Mon-today) with revenue per day and value labels
+- Profit, per currency, from products with a known cost price (see [Cost Prices and Profit](#cost-prices-and-profit)). The text names the products sold without a cost yet ("No cost yet: bread, eggs.", most units first, cut at 5) so the owner can recall and price them; if no product has a cost, it shows how to add one ("e.g. *bread costs 0.80*", using a product they actually sold) instead of showing a $0 profit
 
 ## On-Demand Sales Queries
 
@@ -76,13 +77,53 @@ Owners can ask for their sales data at any time:
 - "How much did I make yesterday?" -> yesterday's stat card
 - "How much did I make this week?" -> weekly text aggregate (Mon-today)
 - "How much did I make this month?" -> monthly text aggregate
-- Works in Shona too
+- "How much did I make these past 2 days?" / "…last 2 weeks?" -> text aggregate over a rolling window ending today: "past 2 days" is yesterday and today, "last 2 weeks" is the last 14 days. "Last week" with no number means the last 7 days, not the previous calendar week (if the model returns "weeks" without a count, it is treated as 1 week, never as today). Windows are capped at a year.
+- "How much profit did I make this week / today / last 2 weeks?" -> a text answer that leads with profit, then revenue (see [Cost Prices and Profit](#cost-prices-and-profit)). Plain "how much did I make" is a revenue question; its answer also includes the profit line when costs are known.
+- Works in Shona too: the labels (Nhasi, Nezuro, Vhiki rino, Mazuva N apfuura, Mavhiki N apfuura, Shona month names), revenue, top-seller and profit lines are all localised
+
+## Cost Prices and Profit
+
+The bot can show profit once it knows what the owner pays for a product. Cost prices are optional — a missing cost never blocks or delays a sale.
+
+**Asking once:** when the owner taps "Looks good" and any product in the sale has no cost price, the "sale recorded" message carries the question, so it is still one message: "✓ Sale recorded! To track profit, how much do you pay for one *Book*? Reply with the amount, e.g. *$1.00*, or Skip." The message shows "Skip", but "later", "ignore", "pass", "no", "not now", "hapana", "kwete", "siya", "zvisiye", "gare gare" and "handizivi" also skip, as long as that is the whole reply. For one product a bare amount is enough ("$1"); for several, owners reply "bread 1.00, eggs 0.20". The question is asked at most twice per product, then left alone, and it expires after 4 hours.
+
+**Confirming a saved cost:** the owner does not need to confirm anything. The bot replies straight away with what it saved and what it means — "✓ Cost saved — Book costs $1.00. Customer pays: $2.00 / You pay: $1.00 / Profit: $1.00 each. I'll use this to calculate your profit." (the profit line is left out if the cost and selling price are in different currencies). The only exception is below.
+
+**Setting or changing a cost later:** "bread costs me $0.80" (or in Shona, "ndinotenga bread pa$0.80"). The LLM classifies this as a `set_cost` intent, separate from a sale. A cost is only saved for a product the shop already has.
+
+**Telling a cost from a selling price:**
+- While a cost question is open, only a reply where every part is "<product> <amount>" for a product we asked about is read as a cost, and the amount must have a currency ($1, R2, 5 zwg) or a decimal point (0.80, 1.00), the same shape the question asks for. A whole number after a product ("bread 2", "bread 40") is how an owner says they sold that many, so it goes to sale parsing, which records the sale and closes the question. A bare amount counts only if one product was asked about, and not while an unanswered closing-time prompt is open (a bare "6" is more likely a closing time; "$6" or "bread 6" still count). "1 bread" or "2 coke $3" is a sale: it is processed normally and closes the question.
+- Voice replies go through the same check on the transcript; a spoken answer that isn't a clear "<product> <amount>" (for example amounts said in words) is treated as a normal message and closes the question.
+- Outside a question, only explicit cost wording ("costs me", "I pay", "cost price", "ndinotenga") is a cost; a message with a quantity is a sale.
+- Every saved cost is echoed back with the selling price and the profit per unit.
+- A cost that is not lower than the current selling price (same currency) is not saved until the owner taps "Yes, save it". A cost of 0 ("it's free") also needs that tap, because a stray "0" would show profit as the whole selling price.
+- A "Yes, save it" tap only works while the product's cost is what it was when the bot asked. If the owner has set a different cost since, the old tap is refused ("Bread's cost changed, so I didn't save this one. Send it again if needed.") instead of overwriting the newer one.
+
+**How profit is calculated:**
+- The cost is frozen on each sale line when the sale is confirmed (`SaleItem.unit_cost` + `cost_currency`). Changing a product's cost later only affects future sales; past profit never changes.
+- Profit = (selling price − frozen cost) × quantity, summed per currency. Currencies are never added together.
+- A line with no cost, or whose cost currency differs from its sale currency (no conversion is done), is left out of profit. The note names the products with no cost, and says separately when a cost exists but is in another currency (it does not ask for a cost the owner already gave).
+- A cost typed straight into the admin without a currency gets the shop's own currency.
+- When a product's cost is first given, today's confirmed lines for that product with no cost (same currency) are filled in. Older sales and lines that already have a cost are never touched.
+- Cancelled and pending sales never count.
+
+**Keeping the owner oriented (owner-only, like all profit lines).** Costs change and the bot only asks once, so every profit answer and the daily summary also shows two short lines: "Costs saved: 8 of 12 products." (counting the shop's active products that have a cost) and one line naming the cost the profit used, for the best-selling costed product, with how to change it: `Profit uses Sugar at R40.00. Changed? Send "Sugar costs R44.00".` It is one line however many products were sold, it uses the product's most recent cost, and the example price is just a tenth higher than the current one. Capturing a cost when the owner restocks, which is when costs actually change, belongs to inventory tracking (#130).
+
+**Known limits:** there is no batch (FIFO) costing, so profit uses the cost at the time of sale, not the cost of the specific stock sold — that needs inventory tracking (#130). Correcting a mistyped cost on past sales is not supported yet. Profit appears in the daily summary and in every on-demand answer. A "Most profitable" list (top 3 by profit, ranked within each currency, only products with a known cost that actually earned something, so a loss-making or break-even product is never listed, and only when at least two can be ranked) sits under the top sellers. Asking for the profit of one named product is not supported yet.
 
 ## Team / Assistants
 
 Shop owners can add assistants by sending: `add assistant +2637812345678`
 
 Assistants can record sales but cannot add other team members. All active members of a company receive the daily summary.
+
+**Cost prices and profit are owner-only (#409).** What a shop pays for stock is the owner's private information, and many owners keep it from staff. So for an assistant:
+- The daily summary arrives without any profit lines (no profit, no "most profitable", no "no cost price yet" notes). It is built per recipient, so the owner in the same shop still gets them.
+- Sales questions ("how much did I make this week?") are answered without profit. A direct profit question ("profit today") gets "Only the shop owner can see profit."
+- Sending a cost ("bread costs 0.80", by text or voice) gets "Only the shop owner can set product costs." Nothing is saved.
+- An assistant is never asked "what do you pay for…". When an assistant confirms a sale that includes a product with no cost, the question goes to the owner instead ("Your assistant recorded a sale. To track profit, how much do you pay for one *Bread*?"), because the owner is the one who knows and manages costs. The assistant gets the plain "sale recorded". This only happens if the owner messaged the bot in the last 24 hours (WhatsApp's customer-service window). Outside it nothing is sent and no ask is used up, so a later sale or the owner's next message can ask again, because the question is only free-form text and there is no approved template for it yet. Only one question is open at a time, so a busy assistant does not pile questions on the owner. An assistant's message is never read as the answer, and the question stays open for the owner.
+
+If owners later want staff to see profit, that would be a per-shop setting. It isn't one today.
 
 ## Help Menu
 

@@ -19,6 +19,7 @@
 - `daily_closing_time` (time), `daily_closing_date` (date) — today's override from owner reply
 - `last_closing_prompt_date` (date) — when the 5pm prompt was last sent
 - `last_summary_date` (date) — prevents duplicate summaries
+- `pending_cost_product_ids` (JSON list), `pending_cost_asked_at` — the open cost-price question; expires after 4 hours (#409)
 
 ### UserProfile
 - `user` (FK to Django User), `phone_number`, `language` (en/sn), `role` (owner/assistant)
@@ -31,6 +32,11 @@
 
 ### SaleItem
 - `sale`, `product` (FK), `quantity`, `unit_price`, `total_price`, `currency`
+- `unit_cost`, `cost_currency` — the product's cost frozen when the sale is confirmed; NULL = unknown, left out of profit (#409)
+
+### Product
+- `company`, `name`, `cost`, `cost_currency` — current cost price; NULL = not known (not the same as free)
+- `cost_ask_count` — how many times the bot asked for the cost; stops at 2
 
 ### WaitlistEntry
 - `phone_number`, `shop_name`, `language`, `status` (pending/approved/rejected)

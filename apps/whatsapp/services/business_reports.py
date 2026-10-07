@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import datetime as dt
 from datetime import datetime, time, timedelta
 from decimal import Decimal
@@ -20,12 +20,15 @@ from apps.catalog.models import Product
 from apps.core.currencies import DEFAULT_CURRENCY, format_price
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale, SaleItem
+from apps.sales.services import summarize_profit
 from apps.inventory.models import InventoryAdjustment
 from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
 
 
 LOW_STOCK_THRESHOLD = 5
+# Longest "last N days" a query may ask for (weeks are capped to the same span).
+MAX_PERIOD_DAYS = 366
 FALLBACK_SUMMARY_CUTOFF = time(21, 0)
 WHATSAPP_SERVICE_WINDOW = timedelta(hours=24)
 
@@ -39,11 +42,24 @@ class BusinessSnapshot:
     items_sold: int
     revenue: Decimal
     currency_revenues: dict  # per-currency breakdown, e.g. {"USD": Decimal("12.00"), "ZAR": Decimal("45.00")}
-    cost: Decimal
-    gross_profit: Decimal
     top_products: list[tuple[str, int]]
     low_stock_items: list[tuple[str, int]]
     out_of_stock_items: list[tuple[str, int]]
+    # Profit per currency, from lines with a known cost only (#409).
+    currency_profits: dict = field(default_factory=dict)
+    # Priced lines left out of profit (no cost yet, or cost in another currency).
+    uncosted_lines: int = 0
+    # Top products by profit, ranked within each currency: {currency: [(name, profit)]}.
+    profit_products: dict = field(default_factory=dict)
+    # Products sold without a cost price, most units first (so the owner can recall them).
+    uncosted_products: list = field(default_factory=list)
+    # Lines left out because their cost is in a different currency from their price.
+    mismatched_currency_lines: int = 0
+    # The cost the profit used for the best-selling costed product, (name, cost, currency),
+    # and how many of the shop's active products have a cost, so the owner sees where they stand.
+    cost_example: tuple | None = None
+    costed_products: int = 0
+    total_products: int = 0
 
 
 TIME_RE = re.compile(r"\b(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<meridiem>am|pm)?\b", re.IGNORECASE)
@@ -114,6 +130,16 @@ def _company_recipients(company: Company) -> list[str]:
     return phones or []
 
 
+def _company_recipient_roles(company: Company) -> dict[str, bool]:
+    """{phone: is_owner} for everyone who receives the shop's messages."""
+    roles: dict[str, bool] = {}
+    for phone, role in UserProfile.objects.filter(company=company, user__is_active=True).values_list(
+        "phone_number", "role"
+    ):
+        roles[phone] = roles.get(phone, False) or role == UserProfile.Role.OWNER
+    return roles
+
+
 def _within_service_window(phone: str) -> bool:
     """True if `phone` sent an inbound WhatsApp message within the last 24
     hours (Meta's customer-service window) — meaning free-form/image
@@ -155,9 +181,11 @@ def build_business_snapshot(company: Company, report_date: datetime.date | None 
     currency_revenues: dict[str, Decimal] = {}
     items_sold = 0
     product_totals: dict[str, int] = {}
+    all_items = []
 
     for sale in sales:
         for item in sale.items.all():
+            all_items.append(item)
             items_sold += int(item.quantity or 0)
             product_totals[item.product.name] = product_totals.get(item.product.name, 0) + int(item.quantity or 0)
             if item.unit_price is not None and item.currency:
@@ -167,12 +195,17 @@ def build_business_snapshot(company: Company, report_date: datetime.date | None 
                 )
 
     revenue = sum(currency_revenues.values(), Decimal("0.00"))
+    profit = summarize_profit(all_items)
 
     top_products = sorted(product_totals.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
 
     low_stock_items: list[tuple[str, int]] = []
     out_of_stock_items: list[tuple[str, int]] = []
+    total_products = 0
+    costed_products = 0
     for product in Product.objects.filter(company=company, active=True):
+        total_products += 1
+        costed_products += product.cost is not None
         stock = int(product.current_stock)
         if stock <= 0:
             out_of_stock_items.append((product.name, stock))
@@ -190,11 +223,17 @@ def build_business_snapshot(company: Company, report_date: datetime.date | None 
         items_sold=items_sold,
         revenue=revenue,
         currency_revenues=currency_revenues,
-        cost=Decimal("0.00"),
-        gross_profit=revenue,
         top_products=top_products,
         low_stock_items=low_stock_items,
         out_of_stock_items=out_of_stock_items,
+        currency_profits=profit.by_currency,
+        uncosted_lines=profit.uncosted_lines,
+        profit_products=profit.most_profitable(),
+        uncosted_products=profit.unknown_cost_names(),
+        mismatched_currency_lines=profit.mismatched_currency_lines,
+        cost_example=profit.cost_example(),
+        costed_products=costed_products,
+        total_products=total_products,
     )
 
 
@@ -214,8 +253,101 @@ def _display_revenue(currency_revenues: dict[str, Decimal]) -> str:
     return " + ".join(format_price(amt, cur) for cur, amt in currency_revenues.items())
 
 
-def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None) -> str:
-    """Render a human-readable business summary message."""
+def _display_profit(currency_profits: dict[str, Decimal]) -> str:
+    """Format per-currency profit. Currencies are listed side by side, never
+    added together, and a loss reads as -$0.50 rather than $-0.50."""
+    parts = []
+    for cur, amt in currency_profits.items():
+        text = format_price(abs(amt), cur)
+        parts.append(f"-{text}" if amt < 0 else text)
+    return ", ".join(parts)
+
+
+MAX_UNCOSTED_NAMES = 5
+
+
+def _uncosted_products_text(names: list[str], lang: str) -> str:
+    from apps.whatsapp.services.webhook_handler import t
+
+    shown = ", ".join(names[:MAX_UNCOSTED_NAMES])
+    extra = len(names) - MAX_UNCOSTED_NAMES
+    if extra > 0:
+        shown += " " + t("summary.and_more", lang=lang, count=extra)
+    return t("summary.profit_uncosted_products", lang=lang, products=shown)
+
+
+def _partial_profit_note(names: list[str], uncosted: int, lang: str, mismatched: int = 0) -> str:
+    """Why profit leaves lines out: name the products with no cost, say when a cost
+    exists but is in another currency, and only count lines when neither is known."""
+    from apps.whatsapp.services.webhook_handler import t
+
+    parts = []
+    if names:
+        parts.append(_uncosted_products_text(names, lang))
+    if mismatched:
+        parts.append(t("summary.profit_currency_mismatch", lang=lang))
+    if not parts:
+        return t("summary.profit_partial_note", lang=lang, count=uncosted)
+    return " ".join(parts)
+
+
+def _no_profit_lines(names: list[str], lang: str, mismatched: int = 0) -> list[str]:
+    """Shown instead of a profit figure when no sold line can be counted. If the
+    only reason is a cost in another currency, don't tell the owner to add a cost
+    they already gave."""
+    from apps.whatsapp.services.webhook_handler import t
+
+    lines = []
+    if names or not mismatched:
+        example = names[0] if names else "bread"
+        lines.append(t("summary.profit_none_note", lang=lang, example=example))
+    if names:
+        lines.append(_uncosted_products_text(names, lang))
+    if mismatched:
+        lines.append(t("summary.profit_currency_mismatch", lang=lang))
+    return lines
+
+
+def _costs_saved_line(costed: int, total: int, lang: str) -> list[str]:
+    """Where the owner stands: how many of the shop's products have a cost saved."""
+    from apps.whatsapp.services.webhook_handler import t
+
+    if not total:
+        return []
+    return [t("summary.costs_saved", lang=lang, have=costed, total=total)]
+
+
+def _cost_used_line(cost_example, lang: str) -> list[str]:
+    """One line naming a cost the profit used and how to change it. Costs go stale and the
+    bot only asks once, so the owner needs to see which cost it is working from."""
+    from apps.whatsapp.services.webhook_handler import t
+
+    if not cost_example:
+        return []
+    name, cost, currency = cost_example
+    new = cost * Decimal("1.1") if cost > 0 else Decimal("1")
+    return [t("summary.profit_cost_used", lang=lang, name=name, cost=format_price(cost, currency),
+              example=format_price(new.quantize(Decimal("0.01")), currency))]
+
+
+def _most_profitable_lines(profit_products: dict, lang: str) -> list[str]:
+    from apps.whatsapp.services.webhook_handler import t
+
+    if not profit_products:
+        return []
+    lines = ["", t("summary.most_profitable", lang=lang)]
+    for currency, ranked in profit_products.items():
+        for name, amount in ranked:
+            lines.append(t("summary.most_profitable_line", lang=lang, name=name, profit=_display_profit({currency: amount})))
+    return lines
+
+
+def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None, show_profit: bool = True) -> str:
+    """Render a human-readable business summary message.
+
+    `show_profit=False` leaves out every profit line (profit, notes, most profitable):
+    what a shop pays for stock is the owner's private information (#409).
+    """
     from apps.whatsapp.services.webhook_handler import t, DEFAULT_LANGUAGE
 
     lang = lang or DEFAULT_LANGUAGE
@@ -231,11 +363,27 @@ def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None)
         revenue=_display_revenue(snapshot.currency_revenues), sale_word=sale_word,
     ))
 
+    if not show_profit:
+        pass
+    elif snapshot.currency_profits:
+        lines.append(t("summary.profit_line", lang=lang, profit=_display_profit(snapshot.currency_profits)))
+        if snapshot.uncosted_lines:
+            lines.append(_partial_profit_note(
+                snapshot.uncosted_products, snapshot.uncosted_lines, lang, snapshot.mismatched_currency_lines))
+        lines.extend(_costs_saved_line(snapshot.costed_products, snapshot.total_products, lang))
+        lines.extend(_cost_used_line(snapshot.cost_example, lang))
+    elif snapshot.sales_count and snapshot.uncosted_lines:
+        lines.extend(_no_profit_lines(snapshot.uncosted_products, lang, snapshot.mismatched_currency_lines))
+        lines.extend(_costs_saved_line(snapshot.costed_products, snapshot.total_products, lang))
+
     if snapshot.top_products:
         lines.append("")
         lines.append(t("summary.top_sellers", lang=lang))
         for name, qty in snapshot.top_products[:3]:
             lines.append(t("summary.top_seller_line", lang=lang, name=name, qty=qty))
+
+    if show_profit:
+        lines.extend(_most_profitable_lines(snapshot.profit_products, lang))
 
     # Closing line based on revenue
     if snapshot.revenue == 0:
@@ -364,6 +512,51 @@ def upload_report_image(image_bytes: bytes, company_id: int, report_date: dt.dat
         return None
 
 
+def resolve_period(
+    timeframe: str | None,
+    count: int | None,
+    today: datetime.date,
+    force_range: bool = False,
+    lang: str | None = None,
+) -> tuple[datetime.date, datetime.date, str] | None:
+    """Turn a parsed timeframe into (start, end, label) for a multi-day answer.
+
+    Returns None for a single day (today/yesterday) — those get the stat card —
+    unless `force_range` asks for a text answer for that day too (profit questions).
+    "days"/"weeks" with a count are rolling windows ending today: "past 2 days"
+    is yesterday and today, "last 2 weeks" is the last 14 days.
+    """
+    from apps.whatsapp.services.webhook_handler import t
+
+    lang = lang or "en"  # callers in the bot always pass the owner's language
+    fmt = lambda d: d.strftime("%d %b")  # noqa: E731
+    if timeframe == "weeks" and not count:
+        count = 1  # "last week" with no number; don't silently fall back to today
+    if timeframe == "week":
+        monday = today - timedelta(days=today.weekday())
+        return monday, today, t("period.label_week", lang=lang, start=fmt(monday), end=fmt(today))
+    if timeframe == "month":
+        return today.replace(day=1), today, t(f"period.months.{today.month}", lang=lang)
+    if timeframe == "year":
+        return today.replace(month=1, day=1), today, str(today.year)
+    if timeframe in ("days", "weeks") and count and count > 0:
+        if timeframe == "days":
+            n = min(count, MAX_PERIOD_DAYS)
+            key, number = "period.label_last_days", n
+        else:
+            number = min(count, MAX_PERIOD_DAYS // 7)
+            n = number * 7
+            key = "period.label_last_week" if number == 1 else "period.label_last_weeks"
+        if n > 1:
+            start = today - timedelta(days=n - 1)
+            return start, today, t(key, lang=lang, n=number, start=fmt(start), end=fmt(today))
+    if force_range:
+        day = today - timedelta(days=1) if timeframe == "yesterday" else today
+        key = "period.label_yesterday" if timeframe == "yesterday" else "period.label_today"
+        return day, day, t(key, lang=lang, date=fmt(day))
+    return None
+
+
 def build_period_summary(company: Company, start_date: datetime.date, end_date: datetime.date) -> dict:
     """Aggregate sales across a date range for week/month/year queries."""
     start = timezone.make_aware(datetime.combine(start_date, time.min))
@@ -378,8 +571,10 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
     )
     currency_revenues: dict[str, Decimal] = {}
     product_totals: dict[str, int] = {}
+    all_items = []
     for sale in sales:
         for item in sale.items.all():
+            all_items.append(item)
             product_totals[item.product.name] = product_totals.get(item.product.name, 0) + int(item.quantity or 0)
             if item.unit_price is not None and item.currency:
                 currency_revenues[item.currency] = (
@@ -388,25 +583,78 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
                 )
     revenue = sum(currency_revenues.values(), Decimal("0.00"))
     top_products = sorted(product_totals.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
+    profit = summarize_profit(all_items)
+    product_counts = Product.objects.filter(company=company, active=True).aggregate(
+        total=models.Count("id"), costed=models.Count("cost"))
+    costed_products, total_products = product_counts["costed"], product_counts["total"]
     return {
         "revenue": revenue,
         "currency_revenues": currency_revenues,
         "sales_count": len(sales),
         "top_products": top_products,
         "currency": company.currency,
+        "currency_profits": profit.by_currency,
+        "uncosted_lines": profit.uncosted_lines,
+        "profit_products": profit.most_profitable(),
+        "uncosted_products": profit.unknown_cost_names(),
+        "mismatched_currency_lines": profit.mismatched_currency_lines,
+        "cost_example": profit.cost_example(),
+        "costed_products": costed_products,
+        "total_products": total_products,
     }
 
 
-def format_period_summary(period_label: str, data: dict) -> str:
+def format_period_summary(
+    period_label: str, data: dict, lang: str | None = None, metric: str = "revenue", show_profit: bool = True
+) -> str:
+    """Text answer for a date range."""
+    from apps.whatsapp.services.webhook_handler import t
+
+    lang = lang or "en"  # callers in the bot always pass the owner's language
     if data["sales_count"] == 0:
-        return f"{period_label}: No sales recorded."
+        return t("period.no_sales", lang=lang, label=period_label)
+
+    if not show_profit:
+        # Same answer without any profit: only the owner sees what products cost.
+        data = {**data, "currency_profits": {}, "uncosted_lines": 0, "profit_products": {}, "uncosted_products": [],
+                "cost_example": None, "costed_products": 0, "total_products": 0}
+        metric = "revenue"
+    profits = data.get("currency_profits") or {}
+    uncosted = data.get("uncosted_lines", 0)
     revenue_str = _display_revenue(data.get("currency_revenues", {}))
-    sale_word = f"{data['sales_count']} sale{'s' if data['sales_count'] != 1 else ''}"
-    lines = [f"{period_label}: {revenue_str} from {sale_word}"]
+    sale_word = t(
+        "summary.sale_word", lang=lang,
+        count=data["sales_count"], plural="s" if data["sales_count"] != 1 else "",
+    )
+
+    names = data.get("uncosted_products", [])
+    mismatched = data.get("mismatched_currency_lines", 0)
+    profit_lines: list[str] = []
+    if profits:
+        profit_lines.append(t("summary.profit_line", lang=lang, profit=_display_profit(profits)))
+        if uncosted:
+            profit_lines.append(_partial_profit_note(names, uncosted, lang, mismatched))
+        profit_lines.extend(_costs_saved_line(data.get("costed_products", 0), data.get("total_products", 0), lang))
+        profit_lines.extend(_cost_used_line(data.get("cost_example"), lang))
+    elif uncosted:
+        # Nothing to say when there are no priced lines at all.
+        profit_lines.extend(_no_profit_lines(names, lang, mismatched))
+        profit_lines.extend(_costs_saved_line(data.get("costed_products", 0), data.get("total_products", 0), lang))
+
+    if metric == "profit":
+        lines = [period_label, *profit_lines, t("summary.revenue_line", lang=lang, revenue=revenue_str, sale_word=sale_word)]
+        lines.extend(_most_profitable_lines(data.get("profit_products", {}), lang))
+        return "\n".join(lines)
+
+    lines = [t("period.total_line", lang=lang, label=period_label, revenue=revenue_str, sale_word=sale_word)]
+    if profits:
+        lines.extend(profit_lines)
     if data["top_products"]:
-        lines.append("\nTop sellers:")
+        lines.append("")
+        lines.append(t("summary.top_sellers", lang=lang))
         for name, qty in data["top_products"][:3]:
-            lines.append(f"  • {name}: {qty}")
+            lines.append(t("summary.top_seller_line", lang=lang, name=name, qty=qty))
+    lines.extend(_most_profitable_lines(data.get("profit_products", {}), lang))
     return "\n".join(lines)
 
 
@@ -445,7 +693,9 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
 
     comparison = await sync_to_async(build_comparison_context, thread_sensitive=True)(company, report_date)
     lang = await sync_to_async(_company_owner_lang, thread_sensitive=True)(company)
-    text_summary = format_business_summary(snapshot, lang=lang)
+    # Profit lines go to owners only; assistants get the same summary without them (#409).
+    text_with_profit = format_business_summary(snapshot, lang=lang, show_profit=True)
+    text_without_profit = format_business_summary(snapshot, lang=lang, show_profit=False)
 
     try:
         from apps.whatsapp.services.report_card import generate_stat_card
@@ -470,7 +720,9 @@ async def send_daily_summary(company: Company, report_date: datetime.date | None
 
     wa_client = get_whatsapp_client()
     recipients = await sync_to_async(_company_recipients, thread_sensitive=True)(company)
+    owner_by_phone = await sync_to_async(_company_recipient_roles, thread_sensitive=True)(company)
     for phone in recipients:
+        text_summary = text_with_profit if owner_by_phone.get(phone) else text_without_profit
         use_template = False
         if settings.USE_TEMPLATE_MESSAGES:
             in_window = await sync_to_async(_within_service_window, thread_sensitive=True)(phone)

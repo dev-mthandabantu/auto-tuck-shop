@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Iterable
 from typing import TYPE_CHECKING, TypedDict
 
 import emoji
@@ -283,6 +285,109 @@ def create_sale_from_parsed_items(
         "unmatched_items": unmatched_items,
         "ambiguous_items": ambiguous_items,
     }
+
+
+def snapshot_item_costs(sale: Sale) -> int:
+    """Freeze each line's cost at the moment the sale is confirmed.
+
+    Copies the product's current cost onto lines that don't have one yet, so a
+    later cost change never rewrites this sale's profit. Lines whose product has
+    no known cost keep unit_cost NULL (unknown, left out of profit). Never
+    overwrites an existing snapshot. Returns the number of lines stamped.
+    """
+    stamped = 0
+    for item in sale.items.select_related("product"):
+        product = item.product
+        if item.unit_cost is not None or product.cost is None:
+            continue
+        item.unit_cost = product.cost
+        item.cost_currency = product.cost_currency
+        item.save(update_fields=["unit_cost", "cost_currency"])
+        stamped += 1
+    return stamped
+
+
+@dataclass
+class ProfitSummary:
+    """Profit over a set of sale lines, kept per currency (never summed across)."""
+
+    by_currency: dict[str, Decimal] = field(default_factory=dict)
+    # {currency: {product name: profit}} — for ranking products by what they earn.
+    by_product: dict[str, dict[str, Decimal]] = field(default_factory=dict)
+    # Units sold and the most recent cost used, per (product name, currency), so the report can
+    # say which cost it used and how to change it (costs go stale; the bot only asks once).
+    costed_units: dict[tuple[str, str], int] = field(default_factory=dict)
+    latest_cost: dict[tuple[str, str], Decimal] = field(default_factory=dict)
+    # Lines with no known cost: left out of profit entirely.
+    unknown_cost_lines: int = 0
+    # {product name: units sold} for those lines, so the owner can see which
+    # products to give a cost for.
+    unknown_cost_units: dict[str, int] = field(default_factory=dict)
+    # Lines whose cost is in a different currency from their price (or has no
+    # currency): left out rather than guessing an exchange rate.
+    mismatched_currency_lines: int = 0
+
+    @property
+    def uncosted_lines(self) -> int:
+        return self.unknown_cost_lines + self.mismatched_currency_lines
+
+    def cost_example(self) -> tuple[str, Decimal, str] | None:
+        """(product name, cost, currency) for the best-selling costed product, the one
+        the "profit uses X at Y" line names. None when no cost was used."""
+        if not self.costed_units:
+            return None
+        name, currency = sorted(self.costed_units, key=lambda k: (-self.costed_units[k], k))[0]
+        return name, self.latest_cost[(name, currency)], currency
+
+    def unknown_cost_names(self) -> list[str]:
+        """Products sold without a cost, most units first."""
+        return [n for n, _ in sorted(self.unknown_cost_units.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+    def most_profitable(self, limit: int = 3) -> dict[str, list[tuple[str, Decimal]]]:
+        """Top products by profit, ranked within each currency (amounts in
+        different currencies can't be compared). Only products that actually earned
+        something are listed, and a currency with fewer than two of them is left out —
+        there is nothing to rank."""
+        ranked: dict[str, list[tuple[str, Decimal]]] = {}
+        for currency, products in self.by_product.items():
+            earning = {name: amount for name, amount in products.items() if amount > 0}
+            if len(earning) < 2:
+                continue
+            ordered = sorted(earning.items(), key=lambda kv: (-kv[1], kv[0]))
+            ranked[currency] = ordered[:limit]
+        return ranked
+
+
+def summarize_profit(items: Iterable[SaleItem]) -> ProfitSummary:
+    """Profit = (unit_price - unit_cost) * quantity, from the cost frozen on each
+    line at confirmation. Callers pass only lines of CONFIRMED sales. Lines
+    without a price are skipped (they're not in revenue either)."""
+    summary = ProfitSummary()
+    for item in items:
+        if item.unit_price is None or not item.currency:
+            continue
+        if item.unit_cost is None:
+            summary.unknown_cost_lines += 1
+            if item.product_id:
+                name = item.product.name
+                summary.unknown_cost_units[name] = summary.unknown_cost_units.get(name, 0) + int(item.quantity or 0)
+            continue
+        if item.cost_currency != item.currency:
+            summary.mismatched_currency_lines += 1
+            continue
+        line_profit = (item.unit_price - item.unit_cost) * item.quantity
+        summary.by_currency[item.currency] = (
+            summary.by_currency.get(item.currency, Decimal("0.00")) + line_profit
+        )
+        if item.product_id:
+            per_product = summary.by_product.setdefault(item.currency, {})
+            name = item.product.name
+            per_product[name] = per_product.get(name, Decimal("0.00")) + line_profit
+            key = (name, item.currency)
+            summary.costed_units[key] = summary.costed_units.get(key, 0) + int(item.quantity or 0)
+            # Sales are read newest first, so the first cost seen for a product is its latest.
+            summary.latest_cost.setdefault(key, item.unit_cost)
+    return summary
 
 
 def auto_cancel_stale_pending_sales(now=None) -> int:

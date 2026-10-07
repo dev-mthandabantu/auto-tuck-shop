@@ -10,7 +10,7 @@ from asgiref.sync import sync_to_async
 from django.db import close_old_connections
 
 from apps.catalog.models import Product
-from apps.sales.services import ParsedSaleItem
+from apps.sales.services import MAX_UNIT_PRICE, ParsedSaleItem
 from services.openrouter import OpenRouterClient
 from utils.timing import track
 
@@ -149,9 +149,17 @@ class ParsedSaleMessage:
 
 
 @dataclass
+class ParsedCostItem:
+    """A cost price the owner stated for a product (intent="set_cost")."""
+    product_name: str
+    cost: Decimal | None = None
+    currency: str | None = None
+
+
+@dataclass
 class UnifiedMessageResult:
     """Result of unified message parsing (intent + data extraction)."""
-    intent: str  # "sale" | "add_assistant" | "sales_query" | "language_switch" | "other"
+    intent: str  # "sale" | "add_assistant" | "sales_query" | "language_switch" | "set_cost" | "other"
     confidence: float
 
     # Sale-specific (populated if intent="sale")
@@ -162,11 +170,16 @@ class UnifiedMessageResult:
     phone_number: str | None = None
 
     # Sales query-specific (populated if intent="sales_query")
-    timeframe: str | None = None  # "today", "yesterday", "week", "month", "X_days"
+    timeframe: str | None = None  # "today", "yesterday", "week", "month", "year", "days", "weeks"
+    period_count: int | None = None  # N for timeframe "days"/"weeks" ("past 2 days" -> days, 2)
+    metric: str = "revenue"  # "revenue" | "profit"
     product_filter: str | None = None
 
     # Language switch-specific (populated if intent="language_switch")
     target_language: str | None = None  # "en" | "sn"
+
+    # Cost-price-specific (populated if intent="set_cost")
+    cost_items: list[ParsedCostItem] = field(default_factory=list)
 
     # Other-specific (populated if intent="other")
     other_sub_intent: str | None = None  # "deferral" | "greeting" | "question" | "unknown"
@@ -394,10 +407,34 @@ async def parse_message_unified(
         elif intent == "sales_query":
             result.timeframe = response.get("timeframe", "today")
             result.product_filter = response.get("product_filter")
+            result.metric = "profit" if response.get("metric") == "profit" else "revenue"
+            try:
+                count = int(response.get("period_count"))
+            except (TypeError, ValueError, OverflowError):
+                count = None
+            result.period_count = count if count and count > 0 else None
 
         elif intent == "language_switch":
             target = response.get("target_language")
             result.target_language = target if target in ("en", "sn") else None
+
+        elif intent == "set_cost":
+            for item in response.get("items", []):
+                name = str(item.get("product_name") or "").strip()
+                if not name:
+                    continue
+                cost = None
+                if item.get("cost") is not None:
+                    try:
+                        cost = Decimal(str(item["cost"]))
+                    except (InvalidOperation, ValueError):
+                        pass
+                    if cost is not None and (cost < 0 or cost > MAX_UNIT_PRICE):
+                        cost = None
+                item_currency = item.get("currency")
+                if item_currency not in ("USD", "ZWG", "ZAR", "BWP", "EUR", "GBP"):
+                    item_currency = None
+                result.cost_items.append(ParsedCostItem(product_name=name, cost=cost, currency=item_currency))
 
         if message_id:
             try:
