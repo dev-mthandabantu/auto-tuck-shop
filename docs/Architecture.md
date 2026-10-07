@@ -46,7 +46,7 @@
 ```
 /webhook/whatsapp/          POST  inbound WhatsApp messages (webhook_view)
 /webhook/whatsapp/          GET   webhook verification (Meta challenge)
-/healthz/                   GET   health check (200 OK)
+/healthz                    GET   health check (200 OK; no trailing slash)
 /admin/                           Django admin
 /mock-whatsapp/                   Mock WhatsApp UI (staging only)
 /mock-whatsapp/send/        POST  send test message via mock

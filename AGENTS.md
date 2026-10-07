@@ -118,8 +118,16 @@ have found alone. Run `python manage.py test unit_tests` (say so in the PR if yo
 4. Post one consolidated PR comment: what each review attacked, found, fixed, and left.
 5. Only then tag a human reviewer. Docs-only PRs: "Trivial — no adversarial pass needed".
 
+**Risky PRs** (concurrency, deletes, writes to sales or prices, outbound sends, state kept between
+messages) also need: the invariant stated in the PR body before coding, a test for each failure mode
+(a send fails or returns False, a second message arrives between check and act, some recipients
+succeed and some fail), real Postgres for locking and transactions, and reviews from both Claude and
+Codex. Experiment tracked in business-operations#37; #417 is why.
+
 **Reviewers:** don't request a change you haven't traced to a concrete affected case; label blocking
-vs discussion explicitly; retract out loud when you're wrong.
+vs discussion explicitly; retract out loud when you're wrong. If the blocker is one the author's
+pre-review should have caught, add the `escaped-pre-review` label and name the category in a line;
+a bug found after merge gets `regression` with "introduced in #N".
 
 ## Shipping flow
 
@@ -132,7 +140,8 @@ vs discussion explicitly; retract out loud when you're wrong.
 7. **Production deploy** — Brighton publishes a GitHub Release, which triggers auto-deploy. The deploy aborts unless the `unit_tests` check passed on the released commit — see `docs/Deployment.md` if a release is blocked. Never deploy to prod without Brighton's explicit sign-off.
 
 **Releases:** semver, only Brighton publishes; commands in `docs/Deployment.md`. Shop owner would
-notice → minor; wouldn't → patch; major means scaling beyond the pilot.
+notice → minor; wouldn't → patch; major means scaling beyond the pilot. Before a minor release,
+check the public site against "Keeping the site current" in `docs/Brand.md`.
 
 ## Deployment
 

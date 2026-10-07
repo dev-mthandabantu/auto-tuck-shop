@@ -60,6 +60,17 @@ The website is read by shop owners, funders, partners, applicants, future hires 
 
 Requests to change the site for a specific funding or partnership narrative should be checked against the private [strategic-positioning framework](https://github.com/aakitech/internal/blob/main/strategy/positioning.md). Access to that repository is intentionally restricted; anyone without access should ask Brighton or another lead for the public wording selected for the opportunity.
 
+## Keeping the site current
+
+The site goes stale quietly, so check it at these moments rather than when someone notices:
+
+- **Every minor release** (a change shop owners would notice): does `/` describe what the bot does now? Add the feature if it's live, and remove anything that no longer is.
+- **Pilot status changes** (a cohort starts, pauses or ends): update the wording under "Staying honest about the pilot" below, then the site. Restarting the pilot is on the #335 checklist.
+- **Verified traction** (numbers we would stand behind publicly, once there's a live cohort): add them to `/partners` as evidence, not as a headline.
+- **Team changes** (someone joins, leaves or changes role): update the `/partners` team section in the same week as AGENTS.md.
+
+Whoever publishes the release does the first check. The other three belong to whoever makes the change.
+
 ## Tone
 
 - Write like a person explaining it to a colleague. No "thrilled to announce", "revolutionising" or "empowering".

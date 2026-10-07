@@ -131,7 +131,7 @@ New migrations must be committed in the same PR as the schema change. Migrations
 
 ## Health Check
 
-`GET /healthz/` -- returns 200 when the app is up. Fly.io polls this every 30 seconds.
+`GET /healthz` (no trailing slash; `/healthz/` returns 404) -- returns 200 when the app is up, answered by `config/middleware.py` before host validation. Fly.io polls this every 30 seconds.
 
 ## Unit Tests in CI
 
