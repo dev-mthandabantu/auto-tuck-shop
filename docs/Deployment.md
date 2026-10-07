@@ -14,7 +14,8 @@ Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
     +-- cron machine (every 15 min: send_daily_reports, send_nudges, auto_cancel_stale_sales;
     |                  every 30 min: stale_waitlist_alert;
     |                  daily 08:00 Africa/Harare: pilot_activity_alert)
-    +-- PostgreSQL (Fly managed)
+        |
+        +-- Supabase PostgreSQL (not on Fly) -- production in eu-west-1, staging in eu-north-1
         |
         +-- OpenRouter (Gemini 2.5 Flash) -- LLM parsing
         +-- ElevenLabs -- voice transcription
@@ -26,7 +27,7 @@ Fly.io (auto-tuck-shop / auto-tuck-shop-staging)
 
 | | Development | Staging | Production |
 |-|-------------|---------|------------|
-| Database | SQLite | PostgreSQL | PostgreSQL |
+| Database | SQLite | Supabase PostgreSQL (eu-north-1) | Supabase PostgreSQL (eu-west-1) |
 | WhatsApp | Disabled | Mock (in-memory) | Real Meta API |
 | Fly config | -- | `fly.staging.toml` | `fly.toml` |
 | App name | -- | `auto-tuck-shop-staging` | `auto-tuck-shop` |

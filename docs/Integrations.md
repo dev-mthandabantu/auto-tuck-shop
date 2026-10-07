@@ -86,7 +86,9 @@ Hosts both production and staging apps on shared machines.
 
 ## PostgreSQL
 
-Production and staging databases managed by Fly.io. Accessed via psycopg3 through `DATABASE_URL`.
+Hosted on **Supabase**, not on Fly: production in `eu-west-1` (Ireland) through the transaction pooler (port 6543), staging in `eu-north-1` (Stockholm) through the session pooler (port 5432). Accessed via psycopg3 through `DATABASE_URL`, a Fly secret on each app.
+
+The Fly apps run in `iad` (US East), so every query crosses the Atlantic. Keep that in mind when choosing where ATS runs.
 
 Migrations are immutable once committed — never edit or delete an existing migration file. Always create a new one.
 
