@@ -21,7 +21,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import close_old_connections
-from django.db.models import F
+from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.catalog.models import Product
@@ -45,6 +45,9 @@ logger = logging.getLogger(__name__)
 # The question goes stale: a "bread 1" sent the next morning is more likely a
 # new sale than an answer.
 COST_QUESTION_TTL = timedelta(hours=4)
+# A question sent as a template (#416) reaches an owner who hasn't been chatting, and who
+# may answer hours later. A shorter expiry would turn their "Bread 1.00" into a sale.
+TEMPLATE_QUESTION_TTL = timedelta(hours=24)
 # After this many unanswered asks for one product, stop asking (don't nag).
 MAX_COST_ASKS = 2
 # Keep the question short enough to answer in one message.
@@ -119,7 +122,9 @@ def _currency_from(pre: str | None, post: str | None) -> str | None:
     return _CURRENCY_BY_TOKEN.get(token)
 
 
-def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True) -> CostReply | None:
+def parse_cost_reply(
+    text: str, pending: dict[int, str], allow_bare: bool = True, strict: bool = False
+) -> CostReply | None:
     """Read a reply to the cost question without calling the LLM.
 
     `pending` maps product id -> name for the products we asked about. Returns
@@ -128,6 +133,10 @@ def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True
     sale) that all name a pending product (a bare amount counts when
     exactly one product is pending and either `allow_bare` is set or it carries a currency like \"$9\"). Returns None for anything else, including
     a message where even one part can't be matched, so it is never half-read.
+
+    `strict` is for a late answer (see `_question_is_late`): a named amount then needs a
+    decimal point, exactly as the question's example shows ("Bread 1.00"). A currency alone
+    ("bread $1") is too much like a sale by then.
     """
     if _SKIP_RE.match(text or ""):
         return CostReply(skipped=True)
@@ -136,6 +145,8 @@ def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True
     for pid, name in pending.items():
         for v in _name_variants(_match_key(name)):
             by_variant[v] = pid
+    # Longest first, so "coke 2l" is tried before "coke" when both are pending.
+    variants = sorted(by_variant, key=len, reverse=True)
 
     entries: list[CostEntry] = []
     seen: set[int] = set()
@@ -144,20 +155,17 @@ def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True
         return None
 
     for segment in segments:
-        matches = list(_AMOUNT_RE.finditer(segment))
-        if len(matches) != 1:
-            return None
-        m = matches[0]
-        before = segment[: m.start()]
-        after = segment[m.end():]
-        # A leading number ("1 bread") is a quantity, not a cost: the amount
-        # must come after the product name. Currency symbols belong to the amount.
-        name = _match_key(before)
-        trailing = _match_key(after)
-        if trailing:
+        # Match a pending product's name at the start first, then read one amount from what
+        # is left. A name can contain a number of its own ("Coke 2L", "Sugar 2kg"), so the
+        # amount is never looked for inside it. A leading number ("1 bread") matches no name,
+        # so it is a quantity, not a cost.
+        key = _match_key(segment)
+        name = next((v for v in variants if key == v or key.startswith(v + " ")), "")
+        m = _AMOUNT_RE.fullmatch(key[len(name):].strip())
+        if not m:
             return None
         if name:
-            pid = next((by_variant[v] for v in _name_variants(name) if v in by_variant), None)
+            pid = by_variant[name]
         elif len(pending) == 1 and (allow_bare or _currency_from(m.group("pre"), m.group("post"))):
             pid = next(iter(pending))
         else:
@@ -170,7 +178,8 @@ def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True
         # a decimal point (0.80, 1.00), which is also how the question asks for it. Anything
         # else goes to sale parsing, and that closes the question. A bare amount with one
         # product pending ("$1", "0.80") is not a sale shape, so it is unaffected.
-        if name and not (_currency_from(m.group("pre"), m.group("post")) or re.search(r"[.,]", m.group("num"))):
+        has_decimal = bool(re.search(r"[.,]", m.group("num")))
+        if name and not (has_decimal or (not strict and _currency_from(m.group("pre"), m.group("post")))):
             return None
         try:
             amount = Decimal(m.group("num").replace(",", "."))
@@ -192,19 +201,32 @@ def parse_cost_reply(text: str, pending: dict[int, str], allow_bare: bool = True
 def _get_pending_products(company_id: int) -> dict[int, str]:
     """Products the open cost question is about; {} if none or it has expired."""
     company = Company.objects.filter(id=company_id).only(
-        "pending_cost_product_ids", "pending_cost_asked_at"
+        "pending_cost_product_ids", "pending_cost_asked_at", "pending_cost_expires_at"
     ).first()
     if not company or not company.pending_cost_product_ids or not company.pending_cost_asked_at:
         return {}
-    if timezone.now() - company.pending_cost_asked_at > COST_QUESTION_TTL:
+    expires_at = company.pending_cost_expires_at or company.pending_cost_asked_at + COST_QUESTION_TTL
+    if timezone.now() > expires_at:
         _clear_pending_sync(company_id)
         return {}
     products = Product.objects.filter(company_id=company_id, id__in=company.pending_cost_product_ids)
     return {p.id: p.name for p in products}
 
 
+@db_sync_to_async
+def _question_is_late(company_id: int) -> bool:
+    """True once the open question is older than the usual expiry, which only a template
+    question (24 hours) lives long enough to be. By then the owner has probably moved on,
+    so a reply is read strictly: a mistake they can see (a sale draft they can fix) beats a
+    silent one (a sale saved as a cost)."""
+    asked_at = Company.objects.filter(id=company_id).values_list("pending_cost_asked_at", flat=True).first()
+    return bool(asked_at) and timezone.now() - asked_at > COST_QUESTION_TTL
+
+
 def _clear_pending_sync(company_id: int) -> None:
-    Company.objects.filter(id=company_id).update(pending_cost_product_ids=[], pending_cost_asked_at=None)
+    Company.objects.filter(id=company_id).update(
+        pending_cost_product_ids=[], pending_cost_asked_at=None, pending_cost_expires_at=None
+    )
 
 
 @db_sync_to_async
@@ -311,11 +333,53 @@ def _products_needing_cost(sale_id: int) -> list[Product]:
 
 
 @db_sync_to_async
-def _open_cost_question(company_id: int, products: list[Product]) -> None:
+def _open_cost_question(company_id: int, products: list[Product], ttl: timedelta | None = None) -> None:
+    """Open the question and count the ask. `ttl` overrides the default expiry."""
     ids = [p.id for p in products]
+    now = timezone.now()
     Product.objects.filter(id__in=ids).update(cost_ask_count=F("cost_ask_count") + 1)
     Company.objects.filter(id=company_id).update(
-        pending_cost_product_ids=ids, pending_cost_asked_at=timezone.now()
+        pending_cost_product_ids=ids, pending_cost_asked_at=now,
+        pending_cost_expires_at=now + ttl if ttl else None,
+    )
+
+
+@db_sync_to_async
+def _claim_cost_question(company_id: int, products: list[Product], ttl: timedelta | None) -> datetime | None:
+    """Open the question only if none is open, in one conditional UPDATE, so two sales
+    confirmed at the same moment (by two assistants) can't both open one. Counts the ask
+    only when the claim succeeds. Returns the claim's asked_at, or None if one was open."""
+    ids = [p.id for p in products]
+    now = timezone.now()
+    free = (
+        Q(pending_cost_asked_at__isnull=True)
+        | Q(pending_cost_expires_at__isnull=True, pending_cost_asked_at__lt=now - COST_QUESTION_TTL)
+        | Q(pending_cost_expires_at__lt=now)
+    )
+    claimed = Company.objects.filter(free, id=company_id).update(
+        pending_cost_product_ids=ids, pending_cost_asked_at=now,
+        pending_cost_expires_at=now + ttl if ttl else None,
+    )
+    if not claimed:
+        return None
+    Product.objects.filter(id__in=ids).update(cost_ask_count=F("cost_ask_count") + 1)
+    return now
+
+
+@db_sync_to_async
+def _shorten_cost_question(company_id: int, asked_at: datetime) -> None:
+    """No template got through, only a normal message: back to the usual expiry."""
+    Company.objects.filter(id=company_id, pending_cost_asked_at=asked_at).update(pending_cost_expires_at=None)
+
+
+@db_sync_to_async
+def _undo_cost_question(company_id: int, products: list[Product], asked_at: datetime) -> None:
+    """Take back a question that reached nobody, so the ask isn't used up. Only clears the
+    question this call opened, never one another sale opened since."""
+    ids = [p.id for p in products]
+    Product.objects.filter(id__in=ids, cost_ask_count__gt=0).update(cost_ask_count=F("cost_ask_count") - 1)
+    Company.objects.filter(id=company_id, pending_cost_asked_at=asked_at).update(
+        pending_cost_product_ids=[], pending_cost_asked_at=None, pending_cost_expires_at=None
     )
 
 
@@ -393,36 +457,74 @@ def sale_confirmed_with_cost_question(products: list[Product], lang: str) -> str
 
 
 @db_sync_to_async
-def _owners_in_window(company_id: int) -> list[tuple[str, str]]:
-    """[(phone, language)] for the shop's owners who messaged the bot in the last 24 hours,
-    so a free-form message can reach them. Outside that window WhatsApp only delivers
-    approved templates, and there is no template for this question yet."""
+def _owners(company_id: int) -> list[tuple[str, str, bool]]:
+    """[(phone, language, in_window)] for the shop's owners. `in_window` is True when the
+    owner messaged the bot in the last 24 hours, so a free-form message can reach them.
+    Outside that window WhatsApp only delivers approved templates."""
     from apps.whatsapp.services.business_reports import _within_service_window
 
     owners = UserProfile.objects.filter(
         company_id=company_id, role=UserProfile.Role.OWNER, user__is_active=True
     )
-    return [(o.phone_number, o.language) for o in owners if _within_service_window(o.phone_number)]
+    return [(o.phone_number, o.language, _within_service_window(o.phone_number)) for o in owners]
+
+
+COST_QUESTION_TEMPLATE = "ats_cost_question"
+
+
+async def _send_cost_question_template(phone: str, products: list[Product], lang: str) -> bool:
+    """The cost question as an approved template, for an owner outside the 24 hour window
+    (#416). {{1}} is the product names, {{2}} an example reply. The example keeps its
+    decimal point: a named amount is only read as a cost with a currency or a decimal."""
+    from apps.whatsapp.services.nudge_service import _template_name_for_lang
+    from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
+
+    components = [{"type": "body", "parameters": [
+        {"type": "text", "text": ", ".join(p.name for p in products)},
+        {"type": "text", "text": f"{products[0].name} 1.00"},
+    ]}]
+    return await get_whatsapp_client().send_template_message(
+        phone, _template_name_for_lang(COST_QUESTION_TEMPLATE, lang), components=components
+    )
 
 
 async def ask_owner_after_assistant_sale(company_id: int, sale_id: int) -> bool:
     """An assistant recorded the sale, but the owner is the one who knows what products cost
     (and often keeps it from staff). So the cost question goes to the owner, never to the
-    assistant. If the owner is outside WhatsApp's 24 hour window nothing is sent and the
-    question is not opened, so the next sale or the owner's next message can ask again.
-    Returns True if a question was sent."""
+    assistant: as a normal message inside WhatsApp's 24 hour window, and as the approved
+    template outside it (#416). If no send is accepted, the question is taken back so the
+    ask isn't used up. Returns True if a question was sent."""
     products = await _products_needing_cost(sale_id)
     if not products:
         return False
     # One open question at a time: don't pile a new one on the owner for every assistant sale.
     if await _get_pending_products(company_id):
         return False
-    owners = await _owners_in_window(company_id)
+    owners = await _owners(company_id)
     if not owners:
         return False
-    await _open_cost_question(company_id, products)
-    for phone, lang in owners:
-        await _send_response(phone, owner_cost_question(products, lang))
+    # Claim it before sending, so a second sale confirmed during the send sees it and doesn't
+    # ask again. A template owner may answer hours later, so their question lasts longer.
+    any_template = any(not in_window for _, _, in_window in owners)
+    asked_at = await _claim_cost_question(company_id, products, TEMPLATE_QUESTION_TTL if any_template else None)
+    if asked_at is None:
+        return False
+    text_reached = template_reached = False
+    for phone, lang, in_window in owners:
+        if in_window:
+            if await _send_response(phone, owner_cost_question(products, lang)) is not False:
+                text_reached = True
+            else:
+                logger.warning("Cost question not accepted for owner of company %s", company_id)
+        elif await _send_cost_question_template(phone, products, lang):
+            template_reached = True
+        else:
+            logger.warning("Cost question template not accepted for owner of company %s", company_id)
+    if not (text_reached or template_reached):
+        await _undo_cost_question(company_id, products, asked_at)
+        return False
+    if any_template and not template_reached:
+        await _shorten_cost_question(company_id, asked_at)
     return True
 
 
@@ -452,15 +554,16 @@ async def handle_pending_cost_reply(
     pending = await _get_pending_products(company.id)
     if not pending:
         return False
+    strict = await _question_is_late(company.id)
 
     # A bare number ("6") is also a plausible answer to an unanswered closing-time
     # prompt, so while one is open it must not be taken as a cost. Leave the cost
     # question open and let the message carry on.
-    if closing_prompt_open and parse_cost_reply(text, pending, allow_bare=False) is None \
-            and parse_cost_reply(text, pending) is not None:
+    if closing_prompt_open and parse_cost_reply(text, pending, allow_bare=False, strict=strict) is None \
+            and parse_cost_reply(text, pending, strict=strict) is not None:
         return False
 
-    reply = parse_cost_reply(text, pending)
+    reply = parse_cost_reply(text, pending, strict=strict)
     if reply is None:
         await clear_pending_cost_question(company.id)
         return False

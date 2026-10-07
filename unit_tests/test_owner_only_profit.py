@@ -212,10 +212,15 @@ class CostQuestionRoleTest(_Shop):
         sale = Sale.objects.create(company=self.company, confirmation_message_sid="sid_role")
         SaleItem.objects.create(sale=sale, product=self.bread, quantity=1, unit_price=Decimal("2.00"), currency="USD")
         send = AsyncMock()
+        # Outside the window the owner is asked by template (#416); keep that off the network.
+        client = MagicMock()
+        client.send_template_message = AsyncMock(return_value=True)
+        self.template = client.send_template_message
         with patch.object(sale_handler, "_get_profile_by_phone", new=AsyncMock(return_value=profile)), \
              patch.object(sale_handler, "_send_response", new=send), \
              patch.object(sale_handler, "_send_response_with_buttons", new=AsyncMock()), \
-             patch.object(sale_handler, "_company_needs_closing_time", new=AsyncMock(return_value=False)):
+             patch.object(sale_handler, "_company_needs_closing_time", new=AsyncMock(return_value=False)), \
+             patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=client):
             run_async_test(sale_handler.process_sale_button_action_async("confirm", "+263770000000", "sid_role"))
         return send
 
@@ -223,9 +228,8 @@ class CostQuestionRoleTest(_Shop):
         send = self._tap_confirm(self.assistant)
 
         self.assertEqual(send.await_args.args[1], "✓ Great, sale recorded!")
-        self.assertEqual(Company.objects.get(id=self.company.id).pending_cost_product_ids, [])
-        self.bread.refresh_from_db()
-        self.assertEqual(self.bread.cost_ask_count, 0)
+        # The question may go to the owner (#416), never to the assistant.
+        self.assertNotIn(ASSISTANT_PHONE, [c.args[0] for c in self.template.await_args_list])
 
     def test_the_sale_itself_is_still_confirmed_for_an_assistant(self):
         self._tap_confirm(self.assistant)

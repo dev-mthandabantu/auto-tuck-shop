@@ -27,6 +27,7 @@ _SHONA_TEMPLATE_NAMES = {
     "ats_onboarding_followup": "ats_onboarding_followup_shona_version",
     "ats_reengagement": "ats_reengagement_shona_version",
     "ats_daily_summary": "ats_daily_summary_shona_version",
+    "ats_cost_question": "ats_cost_question_shona_version",
     "ats_nudge_onboarding_first_sale": "ats_nudge_onboarding_first_sale_shona_version",
     "ats_nudge_onboarding_shona_tip": "ats_nudge_onboarding_shona_tip_shona_version",
     "ats_nudge_retention_no_sales_today": "ats_nudge_retention_no_sales_today_shona_version",

@@ -143,9 +143,10 @@ def _set_company_name(company_id: int, name: str) -> None:
     Company.objects.filter(id=company_id).update(name=name)
 
 
-async def _send_response(to: str, message: str, reply_to: str | None = None) -> None:
+async def _send_response(to: str, message: str, reply_to: str | None = None) -> bool:
+    """Returns whether the send was accepted. Most callers ignore it."""
     client = get_whatsapp_client()
-    await client.send_message(to, message, reply_to=reply_to)
+    return await client.send_message(to, message, reply_to=reply_to)
 
 
 async def _send_response_with_buttons(

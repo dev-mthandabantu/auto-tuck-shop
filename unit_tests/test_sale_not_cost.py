@@ -34,6 +34,51 @@ class NamedAmountShapeTest(SimpleTestCase):
             reply = parse_cost_reply(text, PENDING)
             self.assertEqual(reply.entries[0].currency, currency, text)
 
+    def test_a_number_inside_a_product_name_is_part_of_the_name(self):
+        """#417 review (Omar): the template's own example, "<product> 1.00", must be read as a
+        cost when the product name has a size in it."""
+        pending = {1: "Coke 2L", 2: "Sugar 2kg", 3: "Mazoe 2 litre", 4: "Bread"}
+        for text, pid, amount in (("Coke 2L 1.00", 1, "1.00"), ("Sugar 2kg 1.00", 2, "1.00"),
+                                  ("Mazoe 2 litre 1.00", 3, "1.00"), ("coke 2l $1", 1, "1"),
+                                  ("Coke 2L costs 0.90", 1, "0.90")):
+            reply = parse_cost_reply(text, pending)
+            self.assertIsNotNone(reply, text)
+            self.assertEqual((reply.entries[0].product_id, str(reply.entries[0].amount)), (pid, amount), text)
+
+    def test_a_whole_number_after_a_sized_name_is_still_a_sale(self):
+        pending = {1: "Coke 2L", 2: "Bread"}
+        for text in ("Coke 2L 3", "coke 2l 12", "Coke 2L 3, Bread 0.80"):
+            self.assertIsNone(parse_cost_reply(text, pending), text)
+
+    def test_several_products_with_sizes(self):
+        reply = parse_cost_reply("Coke 2L 1.00, Bread 0.80", {1: "Coke 2L", 2: "Bread"})
+        self.assertEqual([(e.product_id, str(e.amount)) for e in reply.entries], [(1, "1.00"), (2, "0.80")])
+
+    def test_the_longer_name_wins_when_both_are_pending(self):
+        pending = {1: "Coke", 2: "Coke 2L"}
+        self.assertEqual(parse_cost_reply("Coke 2L 1.00", pending).entries[0].product_id, 2)
+        self.assertEqual(parse_cost_reply("Coke 1.00", pending).entries[0].product_id, 1)
+
+    def test_the_template_example_is_read_as_a_cost(self):
+        """Whatever {{2}} the template is sent with must parse as a cost for that product."""
+        for name in ("Bread", "Coke 2L", "Sugar 2kg", "Mazoe 2 litre", "Coca-Cola", "Eggs"):
+            example = f"{name} 1.00"
+            reply = parse_cost_reply(example, {7: name})
+            self.assertIsNotNone(reply, example)
+            self.assertEqual(str(reply.entries[0].amount), "1.00", example)
+
+    def test_strict_needs_a_decimal_point_after_a_name(self):
+        """A late answer (strict) is only a cost in the shape the question shows."""
+        for text in ("bread $1", "bread R2", "bread 5 zwg", "bread 2"):
+            self.assertIsNone(parse_cost_reply(text, PENDING, strict=True), text)
+        for text in ("bread 1.00", "bread $1.00", "bread 0,80"):
+            self.assertIsNotNone(parse_cost_reply(text, PENDING, strict=True), text)
+
+    def test_strict_leaves_a_bare_amount_and_skip_alone(self):
+        one = {1: "Bread"}
+        self.assertIsNotNone(parse_cost_reply("$1", one, strict=True))
+        self.assertTrue(parse_cost_reply("skip", one, strict=True).skipped)
+
     def test_two_products_both_need_the_shape(self):
         self.assertIsNotNone(parse_cost_reply("bread 0.80, coke $1", PENDING))
         self.assertIsNone(parse_cost_reply("bread 0.80, coke 3", PENDING))  # one is a sale: take none of it

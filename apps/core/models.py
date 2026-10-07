@@ -46,6 +46,11 @@ class Company(models.Model):
         blank=True,
         help_text="When the cost-price question was sent — the question expires after a few hours",
     )
+    pending_cost_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the open cost-price question expires. NULL = the default few hours after it was asked; a question sent as a template lasts longer (#416)",
+    )
 
     # Nudge system
     first_message_date = models.DateField(null=True, blank=True, help_text="Date of first inbound message — nudge eligibility starts here")
