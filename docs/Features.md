@@ -147,7 +147,7 @@ A brand-new, not-yet-approved number is unaffected by any of this — that flow 
 
 New phone numbers automatically enter a waitlist. The flow:
 1. Language selection (English / Shona)
-2. Shop name collection
+2. Shop name collection. A greeting (#256) or a message that looks like a sale (#419: a price, a decimal, a quantity marker like "2x", a leading quantity like "2 bread", two separate numbers, "ndatengesa", or another selling word next to a number) is not saved as the name; the bot asks for the name again and says that if it really is the name, to send it again. Sending the same text a second time saves it ("4x4 Auto Spares"), so a wrong guess costs one resend. A single number after a word is still a name ("Shop 24")
 3. Admins notified via WhatsApp — the primary admin gets Approve/Reject buttons;
    any additional admins in `ADMIN_PHONE_NUMBER` get the same alert as plain text
    with a link to the admin panel (#388). Only the primary can carry buttons:

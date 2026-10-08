@@ -35,6 +35,32 @@ _GREETING_PATTERN = re.compile(
     r"^\s*(hi|hie|hey|hello|makadii|mhoro|yo)\s*[.!?]?\s*$", re.IGNORECASE
 )
 
+# A sale sent while the bot waits for a shop name ("2 sugar R45 imwe") — ask for the name
+# again rather than save the sale as it (#419). Only signals a shop name won't have: a
+# price (currency next to a number, or a decimal), a per-unit or selling word, or a
+# quantity marker ("2x", "@ 3"), a leading quantity ("2 bread"), two separate numbers
+# ("2 sugar 45"), or "ndatengesa". Other selling words only count next to a number
+# ("Each Day Groceries" is a name). A single number after a word ("Shop 24") is still a name.
+# A real name that looks like a sale ("4x4 Auto Spares") gets through by being sent again.
+_PRICE_OR_QUANTITY_PATTERN = re.compile(
+    r"\$\s*\d|\bR\s*\d|\b(?:usd|zwg|zig|zar)\s*\d|\d\s*(?:usd|zwg|zig|zar|rand|dollars?)\b"
+    r"|\d[.,]\d{1,2}\b"
+    r"|\d\s*[x×@]|[x×@]\s*\d"
+    r"|^\s*\d+\s*[^\W\d_]"
+    r"|\d\D+\d"
+    r"|\b(?:ndatengesa|ndakatengesa)\b",
+    re.IGNORECASE,
+)
+_SELLING_WORD_PATTERN = re.compile(
+    r"\b(?:imwe|rimwe|chimwe|humwe|umwe|each|sold)\b", re.IGNORECASE
+)
+
+
+def _looks_like_sale(text: str) -> bool:
+    if _PRICE_OR_QUANTITY_PATTERN.search(text):
+        return True
+    return bool(_SELLING_WORD_PATTERN.search(text)) and bool(re.search(r"\d", text))
+
 
 @db_sync_to_async
 def _create_waitlist_entry(phone_number: str, first_message: str) -> tuple[WaitlistEntry, bool]:
@@ -83,6 +109,11 @@ def _update_profile_language(profile_id: int, language: str) -> None:
 @db_sync_to_async
 def _update_waitlist_company_name(entry_id: int, company_name: str) -> None:
     WaitlistEntry.objects.filter(id=entry_id).update(company_name=company_name)
+
+
+@db_sync_to_async
+def _set_rejected_name_candidate(entry_id: int, text: str) -> None:
+    WaitlistEntry.objects.filter(id=entry_id).update(rejected_name_candidate=text[:200])
 
 
 @db_sync_to_async
@@ -294,6 +325,12 @@ async def process_waitlisted_message_async(sender: str, text: str, waitlist_entr
         stripped = text.strip()
         if not waitlist_entry.company_name and stripped and _GREETING_PATTERN.match(stripped):
             await _send_response(sender, t("waitlist.greeting_prompt_shop_name", lang=lang))
+        elif not waitlist_entry.company_name and stripped and _looks_like_sale(stripped) \
+                and stripped.casefold() != (waitlist_entry.rejected_name_candidate or "").casefold():
+            # Turned away once. Sending the same text again means it really is the name
+            # ("4x4 Auto Spares"), so the next branch saves it: a wrong guess costs one resend.
+            await _set_rejected_name_candidate(waitlist_entry.id, stripped)
+            await _send_response(sender, t("waitlist.sale_prompt_shop_name", lang=lang))
         elif not waitlist_entry.company_name and stripped:
             await _update_waitlist_company_name(waitlist_entry.id, stripped)
             waitlist_entry.company_name = stripped

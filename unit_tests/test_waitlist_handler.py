@@ -124,6 +124,69 @@ class ProcessWaitlistedMessageGreetingTest(TransactionTestCase):
         notify_mock.assert_called_once()
         send_response_mock.assert_called_once()
 
+    def test_sale_not_captured_as_company_name(self):
+        """#419: on staging, "2 sugar R45 imwe" became the shop's name."""
+        for sale in ("2 sugar R45 imwe", "5 chingwa R18 chimwe", "2 Mazoe $3 rimwe", "bread 1.50",
+                     "Plate Beef $1×16", "3 coke @ 1", "sold 4 bread", "ndatengesa 2 shuga", "bread 2x",
+                     "10 airtime 5 zwg", "eggs 30 rand",
+                     # #421 review: a number plus a product with no price, as the issue asked
+                     "2 bread", "5 chingwa", "2 sugar 45", "Ndatengesa chingwa"):
+            with self.subTest(sale=sale):
+                self.entry.company_name = ""
+                self.entry.save()
+                send_response_mock, notify_mock = self._run_message(sale)
+                self.entry.refresh_from_db()
+                self.assertEqual(self.entry.company_name, "")
+                notify_mock.assert_not_called()
+                self.assertIn("looks like a sale", send_response_mock.call_args.args[1])
+
+    def test_names_with_numbers_or_r_are_still_names(self):
+        for name in ("Shop 24", "R&M General Dealer", "Stand 1043 Tuckshop", "Mai Ati Mini Eatery",
+                     "Mai Tendai's shop", "Rimbi Store", "Each Day Groceries"):
+            with self.subTest(name=name):
+                self.entry.company_name = ""
+                self.entry.save()
+                _, notify_mock = self._run_message(name)
+                self.entry.refresh_from_db()
+                self.assertEqual(self.entry.company_name, name)
+
+    def test_a_name_that_looks_like_a_sale_is_saved_when_sent_again(self):
+        """#421 review: "4x4 Auto Spares" must not be refused forever. Sending the same text
+        again (any case, any surrounding spaces) saves it."""
+        for name, again in (("4x4 Auto Spares", "4x4 auto spares"), ("R2 Supermarket", " R2 Supermarket "),
+                            ("7 Eleven", "7 Eleven"), ("Shop @ 5th Street", "Shop @ 5th Street")):
+            with self.subTest(name=name):
+                self.entry.company_name = ""
+                self.entry.rejected_name_candidate = ""
+                self.entry.save()
+                first, first_notify = self._run_message(name)
+                self.entry.refresh_from_db()
+                self.assertEqual(self.entry.company_name, "")
+                first_notify.assert_not_called()
+                self.assertIn("send it again", first.call_args.args[1])
+
+                _, notify_mock = self._run_message(again)
+                self.entry.refresh_from_db()
+                self.assertEqual(self.entry.company_name, again.strip())
+                notify_mock.assert_called_once()
+
+    def test_a_different_sale_the_second_time_is_still_turned_away(self):
+        self._run_message("2 sugar R45 imwe")
+        self.entry.refresh_from_db()
+
+        send_response_mock, notify_mock = self._run_message("3 bread R18 chimwe")
+
+        self.entry.refresh_from_db()
+        self.assertEqual(self.entry.company_name, "")
+        notify_mock.assert_not_called()
+        self.assertIn("looks like a sale", send_response_mock.call_args.args[1])
+
+    def test_sale_prompt_is_in_the_entrys_language(self):
+        self.entry.language = "sn"
+        self.entry.save()
+        send_response_mock, _ = self._run_message("2 sugar R45 imwe")
+        self.assertIn("Izvi zvinoita se sale", send_response_mock.call_args.args[1])
+
     def test_still_pending_response_once_company_name_already_set(self):
         self.entry.company_name = "Existing Shop"
         self.entry.save()
