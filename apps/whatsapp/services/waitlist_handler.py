@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 
@@ -35,31 +36,15 @@ _GREETING_PATTERN = re.compile(
     r"^\s*(hi|hie|hey|hello|makadii|mhoro|yo)\s*[.!?]?\s*$", re.IGNORECASE
 )
 
-# A sale sent while the bot waits for a shop name ("2 sugar R45 imwe") — ask for the name
-# again rather than save the sale as it (#419). Only signals a shop name won't have: a
-# price (currency next to a number, or a decimal), a per-unit or selling word, or a
-# quantity marker ("2x", "@ 3"), a leading quantity ("2 bread"), two separate numbers
-# ("2 sugar 45"), or "ndatengesa". Other selling words only count next to a number
-# ("Each Day Groceries" is a name). A single number after a word ("Shop 24") is still a name.
-# A real name that looks like a sale ("4x4 Auto Spares") gets through by being sent again.
-_PRICE_OR_QUANTITY_PATTERN = re.compile(
-    r"\$\s*\d|\bR\s*\d|\b(?:usd|zwg|zig|zar)\s*\d|\d\s*(?:usd|zwg|zig|zar|rand|dollars?)\b"
-    r"|\d[.,]\d{1,2}\b"
-    r"|\d\s*[x×@]|[x×@]\s*\d"
-    r"|^\s*\d+\s*[^\W\d_]"
-    r"|\d\D+\d"
-    r"|\b(?:ndatengesa|ndakatengesa)\b",
-    re.IGNORECASE,
-)
-_SELLING_WORD_PATTERN = re.compile(
-    r"\b(?:imwe|rimwe|chimwe|humwe|umwe|each|sold)\b", re.IGNORECASE
-)
+# A typed answer to "Is *X* your shop's name?" while that question is open.
+_TYPED_YES_PATTERN = re.compile(r"^\s*(yes|yeah|yep|ehe|hongu|ndizvo|ndiro|correct)\s*[.!]*\s*$", re.IGNORECASE)
+_TYPED_NO_PATTERN = re.compile(r"^\s*(no|nope|kwete|aiwa|haiwa)\s*[.!]*\s*$", re.IGNORECASE)
 
 
-def _looks_like_sale(text: str) -> bool:
-    if _PRICE_OR_QUANTITY_PATTERN.search(text):
-        return True
-    return bool(_SELLING_WORD_PATTERN.search(text)) and bool(re.search(r"\d", text))
+def _name_tag(candidate: str) -> str:
+    """Ties a Yes/No button to the exact text it asked about, so a tap on an older question
+    can never save a newer candidate."""
+    return hashlib.sha1(candidate.encode("utf-8")).hexdigest()[:8]
 
 
 @db_sync_to_async
@@ -107,13 +92,29 @@ def _update_profile_language(profile_id: int, language: str) -> None:
 
 
 @db_sync_to_async
-def _update_waitlist_company_name(entry_id: int, company_name: str) -> None:
-    WaitlistEntry.objects.filter(id=entry_id).update(company_name=company_name)
+def _claim_waitlist_company_name(entry_id: int, company_name: str, only_if_candidate: str | None = None) -> bool:
+    """Set the shop name only if none is set yet (and, for a Yes tap, only if the candidate
+    is still the one that was asked about), in one conditional UPDATE. True if this call set
+    it, so the admin is alerted exactly once even if two messages or taps race (#423)."""
+    rows = WaitlistEntry.objects.filter(id=entry_id, company_name="", status=WaitlistEntry.Status.PENDING)
+    if only_if_candidate is not None:
+        rows = rows.filter(pending_name_candidate=only_if_candidate)
+    return rows.update(company_name=company_name[:200], pending_name_candidate="") == 1
 
 
 @db_sync_to_async
-def _set_rejected_name_candidate(entry_id: int, text: str) -> None:
-    WaitlistEntry.objects.filter(id=entry_id).update(rejected_name_candidate=text[:200])
+def _set_pending_name_candidate(entry_id: int, text: str) -> bool:
+    """False if a name is already set (or the entry was decided), so no question is asked."""
+    return WaitlistEntry.objects.filter(
+        id=entry_id, company_name="", status=WaitlistEntry.Status.PENDING
+    ).update(pending_name_candidate=text) == 1
+
+
+@db_sync_to_async
+def _clear_pending_name_candidate(entry_id: int, only_if_candidate: str) -> bool:
+    return WaitlistEntry.objects.filter(
+        id=entry_id, pending_name_candidate=only_if_candidate
+    ).update(pending_name_candidate="") == 1
 
 
 @db_sync_to_async
@@ -319,23 +320,89 @@ async def process_new_waitlist_entry_async(sender: str, text: str) -> None:
         await _send_response(sender, t("waitlist.first_message_noted"))
 
 
+async def _save_shop_name(sender: str, entry: WaitlistEntry, name: str, only_if_candidate: str | None = None) -> bool:
+    """Set the name, confirm it to the owner and alert the admin, once."""
+    if not await _claim_waitlist_company_name(entry.id, name, only_if_candidate):
+        return False
+    entry.company_name = name
+    entry.pending_name_candidate = ""
+    await _send_response(sender, t("waitlist.shop_name_noted", lang=entry.language, shop_name=name))
+    await _send_waitlist_admin_notification(entry)
+    return True
+
+
+async def _ask_to_confirm_shop_name(sender: str, entry: WaitlistEntry, candidate: str) -> None:
+    """Ask "Is *X* your shop's name?" instead of guessing (#423). The buttons carry a tag of this
+    exact text, so only a tap on this question can save it."""
+    lang = entry.language
+    if not await _set_pending_name_candidate(entry.id, candidate):
+        # A name was saved meanwhile (another message got there first): nothing to ask.
+        await _send_response(sender, t("waitlist.still_pending", lang=lang))
+        return
+    tag = _name_tag(candidate)
+    buttons = [
+        {"id": f"shopname_yes_{entry.id}_{tag}", "title": t("waitlist.btn_name_yes", lang=lang)},
+        {"id": f"shopname_no_{entry.id}_{tag}", "title": t("waitlist.btn_name_no", lang=lang)},
+    ]
+    try:
+        sent = await _send_response_with_buttons(sender, t("waitlist.confirm_shop_name", lang=lang, name=candidate), buttons)
+    except Exception:
+        # e.g. Meta answers 200 with no message id. Treat it like a failed send, so a question the
+        # owner never saw can't be confirmed by a later typed "yes" (#424 review).
+        logger.exception("Shop name confirmation buttons failed for waitlist entry %s", entry.id)
+        sent = None
+    if not sent:
+        # The buttons didn't go out, so nothing can confirm this candidate: drop it, ask plainly.
+        await _clear_pending_name_candidate(entry.id, candidate)
+        await _send_response(sender, t("waitlist.greeting_prompt_shop_name", lang=lang))
+
+
+async def process_shop_name_button_async(action: str, entry_id: int, tag: str, sender: str) -> None:
+    """Yes / No on "Is *X* your shop's name?" (#423)."""
+    entry = await _get_waitlist_entry(entry_id)
+    if not entry or entry.phone_number != _extract_phone_number(sender):
+        logger.warning("Shop name button %s for entry %s from a different number", action, entry_id)
+        return
+    lang = entry.language
+    if entry.status == WaitlistEntry.Status.REJECTED:
+        await _send_response(sender, t("waitlist.rejected", lang=lang))
+        return
+    if entry.status != WaitlistEntry.Status.PENDING:
+        return  # approved: an old question no longer means anything, and the shop is set up
+    if entry.company_name:
+        await _send_response(sender, t("waitlist.still_pending", lang=lang))
+        return
+    candidate = entry.pending_name_candidate
+    if not candidate or _name_tag(candidate) != tag:
+        await _send_response(sender, t("waitlist.shop_name_stale", lang=lang))
+        return
+    if action == "yes":
+        if not await _save_shop_name(sender, entry, candidate, only_if_candidate=candidate):
+            await _send_response(sender, t("waitlist.still_pending", lang=lang))
+    elif await _clear_pending_name_candidate(entry.id, candidate):
+        await _send_response(sender, t("waitlist.shop_name_ask_again", lang=lang))
+
+
 async def process_waitlisted_message_async(sender: str, text: str, waitlist_entry: WaitlistEntry) -> None:
     lang = waitlist_entry.language
     if waitlist_entry.status == WaitlistEntry.Status.PENDING:
         stripped = text.strip()
-        if not waitlist_entry.company_name and stripped and _GREETING_PATTERN.match(stripped):
+        candidate = waitlist_entry.pending_name_candidate
+        if not waitlist_entry.company_name and candidate and _TYPED_YES_PATTERN.match(stripped):
+            # Typed "Yes" instead of tapping: answer the open question, not a new one.
+            await process_shop_name_button_async("yes", waitlist_entry.id, _name_tag(candidate), sender)
+        elif not waitlist_entry.company_name and candidate and _TYPED_NO_PATTERN.match(stripped):
+            await process_shop_name_button_async("no", waitlist_entry.id, _name_tag(candidate), sender)
+        elif not waitlist_entry.company_name and stripped and (
+            _GREETING_PATTERN.match(stripped) or _TYPED_YES_PATTERN.match(stripped) or _TYPED_NO_PATTERN.match(stripped)
+        ):
+            # A greeting, or a yes/no with no question open: not a name, ask for it.
             await _send_response(sender, t("waitlist.greeting_prompt_shop_name", lang=lang))
-        elif not waitlist_entry.company_name and stripped and _looks_like_sale(stripped) \
-                and stripped.casefold() != (waitlist_entry.rejected_name_candidate or "").casefold():
-            # Turned away once. Sending the same text again means it really is the name
-            # ("4x4 Auto Spares"), so the next branch saves it: a wrong guess costs one resend.
-            await _set_rejected_name_candidate(waitlist_entry.id, stripped)
-            await _send_response(sender, t("waitlist.sale_prompt_shop_name", lang=lang))
         elif not waitlist_entry.company_name and stripped:
-            await _update_waitlist_company_name(waitlist_entry.id, stripped)
-            waitlist_entry.company_name = stripped
-            await _send_response(sender, t("waitlist.shop_name_noted", lang=lang, shop_name=stripped))
-            await _send_waitlist_admin_notification(waitlist_entry)
+            # Always confirm (#423): any guess about what is a name can be wrong ("We sell
+            # groceries", "bread 2"), and a wrong name reaches the admin and the welcome message.
+            # One tap per shop, once, and nothing is saved without the owner's Yes.
+            await _ask_to_confirm_shop_name(sender, waitlist_entry, stripped[:200])
         else:
             await _send_response(sender, t("waitlist.still_pending", lang=lang))
     elif waitlist_entry.status == WaitlistEntry.Status.REJECTED:
@@ -353,8 +420,10 @@ async def process_language_button_async(lang: str, entry_id: int, sender: str) -
 
     # Notify admin now only if user already provided a shop name.
     # Otherwise notification fires when shop name arrives (process_waitlisted_message_async).
+    # Only if the admin hasn't been told yet: tapping a language button after the name was saved
+    # (or tapping it twice) must not send the signup alert again (#424 review).
     entry = await _get_waitlist_entry(entry_id)
-    if entry and entry.company_name:
+    if entry and entry.company_name and not entry.admin_alerted_at:
         await _send_waitlist_admin_notification(entry)
 
 
@@ -461,6 +530,20 @@ def handle_language_button_action(lang: str, entry_id: int, sender: str) -> None
         run_async(process_language_button_async(lang, entry_id, sender))
     except Exception as e:
         logger.exception(f"Error handling language selection for {sender}: {e}")
+
+
+def handle_shop_name_button_action(button_id: str, sender: str) -> None:
+    """shopname_{yes|no}_{entry_id}_{tag}"""
+    try:
+        close_old_connections()
+        _, action, entry_id, tag = button_id.split("_", 3)
+        if action not in ("yes", "no"):
+            raise ValueError(action)
+        run_async(process_shop_name_button_async(action, int(entry_id), tag, sender))
+    except ValueError:
+        logger.warning("Malformed shop name button id: %s", button_id)
+    except Exception as e:
+        logger.exception(f"Error handling shop name button {button_id}: {e}")
 
 
 def handle_waitlist_button_action(action: str, sender: str, original_message_sid: str | None = None) -> None:

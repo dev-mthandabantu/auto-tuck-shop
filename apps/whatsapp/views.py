@@ -22,6 +22,7 @@ from apps.whatsapp.services.webhook_handler import (
     handle_nudge_reports_yes,
     handle_unhandled_button_tap,
     handle_sale_button_action,
+    handle_shop_name_button_action,
     handle_waitlist_button_action,
     handle_waitlisted_message,
     run_async,
@@ -406,6 +407,8 @@ class WhatsAppWebhookView(View):
             handle_closing_time_button_action(sender=sender, button_id=button_id)
         elif button_id in ("currency_usd", "currency_zwg", "currency_zar"):
             handle_currency_clarification(sender=sender, button_id=button_id)
+        elif button_id.startswith("shopname_yes_") or button_id.startswith("shopname_no_"):
+            handle_shop_name_button_action(button_id=button_id, sender=sender)
         elif button_id.startswith("costyes_") or button_id == "costno":
             handle_cost_confirm_button(sender=sender, button_id=button_id)
         else:

@@ -118,11 +118,11 @@ class WaitlistEntry(models.Model):
     phone_number = models.CharField(max_length=25, unique=True)
     first_message = models.TextField(blank=True)
     company_name = models.CharField(max_length=200, blank=True)
-    rejected_name_candidate = models.CharField(
+    pending_name_candidate = models.CharField(
         max_length=200,
         blank=True,
-        help_text="Last message turned away as looking like a sale while asking for the shop name; "
-                  "sending the same text again saves it as the name (#419)",
+        help_text="Text the bot asked 'Is this your shop's name?' about; saved as the name only "
+                  "if the owner taps Yes on that question (#423)",
     )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     created_at = models.DateTimeField(auto_now_add=True)

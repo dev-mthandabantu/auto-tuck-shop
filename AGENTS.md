@@ -96,6 +96,10 @@ But the pilot is paused (see "Current phase"), and that changes what else is wor
 
 New features outside that milestone belong in the backlog until the restart.
 
+**Ask, don't guess.** When the bot isn't sure what an owner meant and a wrong guess would save bad
+data (a sale, a cost, a shop name), confirm with buttons rather than adding rules to guess better.
+Sales already work this way. #419 tried guessing shop names and failed three review rounds; #423 asks.
+
 ## Keeping the backlog current
 
 - **Close issues on merge:** `gh issue close <number> --comment "Fixed in #<PR>"`

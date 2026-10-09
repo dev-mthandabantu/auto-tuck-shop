@@ -229,6 +229,11 @@ def handle_waitlist_button_action(action: str, sender: str, original_message_sid
     _handle(action, sender, original_message_sid)
 
 
+def handle_shop_name_button_action(button_id: str, sender: str) -> None:
+    from apps.whatsapp.services.waitlist_handler import handle_shop_name_button_action as _handle
+    _handle(button_id=button_id, sender=sender)
+
+
 def handle_sale_button_action(action: str, sender: str, original_message_sid: str | None = None) -> None:
     from apps.whatsapp.services.sale_handler import handle_sale_button_action as _handle
     _handle(action, sender, original_message_sid)

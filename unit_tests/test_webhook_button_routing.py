@@ -121,6 +121,25 @@ class TemplateButtonRoutingTest(TransactionTestCase):
         mock_handle.assert_not_called()
 
 
+class ShopNameButtonRoutingTest(TransactionTestCase):
+    """#423: the shop-name Yes/No buttons reach their handler through the real dispatch."""
+
+    def _tap(self, button_id):
+        view = WhatsAppWebhookView()
+        mock_client = MagicMock()
+        mock_client.mark_as_read = AsyncMock(return_value=None)
+        with patch("apps.whatsapp.views.handle_shop_name_button_action") as handler, \
+             patch("apps.whatsapp.services.whatsapp_client.get_whatsapp_client", return_value=mock_client):
+            view._handle_message(_interactive_button_message(button_id=button_id, wamid=f"wamid.shopname_{button_id}"))
+        return handler
+
+    def test_yes_and_no_reach_the_handler(self):
+        for button_id in ("shopname_yes_5_abcd1234", "shopname_no_5_abcd1234"):
+            handler = self._tap(button_id)
+            handler.assert_called_once()
+            self.assertEqual(handler.call_args.kwargs["button_id"], button_id)
+
+
 class CostButtonRoutingTest(TransactionTestCase):
     """The cost-confirmation buttons (#409) must reach the cost handler through the real
     webhook dispatch, not just when the handler is called directly."""
