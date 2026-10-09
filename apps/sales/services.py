@@ -368,7 +368,11 @@ def summarize_profit(items: Iterable[SaleItem]) -> ProfitSummary:
             continue
         if item.unit_cost is None:
             summary.unknown_cost_lines += 1
-            if item.product_id:
+            # Name it under "No cost yet" only if it still has no cost. A line sold before its
+            # cost was saved stays uncosted (snapshots never change), but telling the owner to
+            # add a cost they already gave reads as if it didn't save (#422 review). The line
+            # still counts toward the partial-profit note.
+            if item.product_id and item.product.cost is None:
                 name = item.product.name
                 summary.unknown_cost_units[name] = summary.unknown_cost_units.get(name, 0) + int(item.quantity or 0)
             continue

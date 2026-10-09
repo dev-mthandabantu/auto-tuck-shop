@@ -25,11 +25,45 @@ class OwnerAskedAfterAssistantSaleTest(_Shop):
             message_type=WhatsAppMessage.MessageType.TEXT, company=self.company)
         WhatsAppMessage.objects.filter(pk=msg.pk).update(timestamp=timezone.now() - datetime.timedelta(hours=hours_ago))
 
-    def _sale_by_assistant(self, *products, sid="sid_a"):
+    def _sale_by_assistant(self, *products, sid="sid_a", currency="USD"):
         sale = Sale.objects.create(company=self.company, confirmation_message_sid=sid)
         for p in products:
-            SaleItem.objects.create(sale=sale, product=p, quantity=1, unit_price=Decimal("2.00"), currency="USD")
+            SaleItem.objects.create(sale=sale, product=p, quantity=1, unit_price=Decimal("2.00"), currency=currency)
         return sale
+
+    def test_the_example_amount_is_in_the_sales_currency(self):
+        """#418: the question said "e.g. $1.00" in a rand shop."""
+        self._inbound(OWNER_PHONE, hours_ago=2)
+        self._sale_by_assistant(self.bread, currency="ZAR")
+
+        _, to_owner = self._confirm(self.assistant)
+
+        self.assertIn("e.g. *R1.00*", to_owner.await_args.args[1])
+        self.assertNotIn("$", to_owner.await_args.args[1])
+
+    def test_the_owners_own_sale_question_uses_the_sales_currency_too(self):
+        self._sale_by_assistant(self.bread, currency="ZAR")
+
+        to_owner_reply, _ = self._confirm(self.owner)
+
+        self.assertIn("e.g. *R1.00*", to_owner_reply.await_args.args[1])
+
+    def test_a_sale_line_without_a_currency_uses_the_shops(self):
+        """An unpriced line has no currency; the example falls back to the shop's."""
+        type(self.company).objects.filter(id=self.company.id).update(currency="ZAR")
+        sale = Sale.objects.create(company=self.company, confirmation_message_sid="sid_none")
+        SaleItem.objects.create(sale=sale, product=self.bread, quantity=1, unit_price=None, currency=None)
+
+        products = run_async_test(cost_handler._products_needing_cost(sale.id))
+
+        self.assertEqual(cost_handler._example_amount(products[0]), "R1.00")
+
+    def test_a_usd_sale_still_shows_dollars(self):
+        self._sale_by_assistant(self.bread)
+
+        to_owner_reply, _ = self._confirm(self.owner)
+
+        self.assertIn("e.g. *$1.00*", to_owner_reply.await_args.args[1])
 
     def _confirm(self, profile, sid="sid_a", template_delivered=True, text_delivered=True):
         """Confirm the sale as `profile`. Templates go to `self.template` (#416)."""

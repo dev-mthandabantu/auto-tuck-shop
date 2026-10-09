@@ -88,7 +88,7 @@
         "and_more": "+{count} zvimwe",
         "profit_currency_mismatch": "Zvimwe zvine cost nemutengo wecustomer zviri mumari yakasiyana, saka hazvina kuverengwa.",
         "costs_saved": "Zvine cost: {have} pa{total}.",
-        "profit_cost_used": "Purofiti yashandisa cost ye{name}: {cost}. Yachinja? Tumira \"ndinotenga {name} pa{example}\"."
+        "profit_cost_used": "Cost yachinja? Tumira \"ndinotenga {name} pa{example}\"."
     },
     "period": {
         "label_today": "Nhasi ({date})",
@@ -179,14 +179,14 @@
         "not_understood": "Handina kuona product kana mari. Tumira: bread 0.80",
         "saved_header": "✓ Cost yachengetwa — {name}: {cost}.",
         "saved_detail": "Customer anobhadhara: {price}\nIwe unobhadhara: {cost}\nPurofiti: {profit} imwe neimwe",
-        "ask_after_sale_one": "✓ Sale yarecordwa!\n\nKuti uone purofiti, unobhadhara marii pa *{name}* imwe?\nPindura nemari, semuenzaniso *$1.00*\nKana *Skip*.",
+        "ask_after_sale_one": "✓ Sale yarecordwa!\n\nKuti uone purofiti, unobhadhara marii pa *{name}* imwe?\nPindura nemari, semuenzaniso *{example}*\nKana *Skip*.",
         "ask_after_sale_many": "✓ Sale yarecordwa!\n\nKuti uone purofiti, unobhadhara marii paimwe neimwe?\n{names}\n\nPindura se: *{example}*\nKana *Skip*.",
         "saved_footer": "Ndichashandisa izvi kuverenga purofiti yako.",
         "owner_only": "Muridzi weshop chete ndiye anogona kuisa cost.",
         "profit_owner_only": "Muridzi weshop chete ndiye anogona kuona purofiti.",
         "zero_cost": "{name} pa{cost} zvinoreva kuti hapana chaunobhadhara. Ndizvo here?",
         "changed": "Cost ye{name} yachinja, saka handina kuchengeta iyi. Tumirazve kana uchida.",
-        "ask_owner_one": "Mutengesi wako arekodha sale.\n\nKuti uone purofiti, unobhadhara marii pa *{name}* imwe?\nPindura nemari, semuenzaniso *$1.00*\nKana *Skip*.",
+        "ask_owner_one": "Mutengesi wako arekodha sale.\n\nKuti uone purofiti, unobhadhara marii pa *{name}* imwe?\nPindura nemari, semuenzaniso *{example}*\nKana *Skip*.",
         "ask_owner_many": "Mutengesi wako arekodha sale.\n\nKuti uone purofiti, unobhadhara marii paimwe neimwe?\n{names}\n\nPindura se: *{example}*\nKana *Skip*."
     },
     "sale": {

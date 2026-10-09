@@ -43,6 +43,30 @@ class _Shop2(TestCase):
         return build_period_summary(self.company, today - datetime.timedelta(days=days - 1), today)
 
 
+class NoCostYetListTest(_Shop2):
+    """#422 review (Omar): book sold Monday before its cost was saved, cost set Tuesday, sold
+    Wednesday at a profit. "This week" must not list book under both "No cost yet" and
+    "Most profitable"."""
+
+    def test_a_product_that_now_has_a_cost_is_not_listed_as_missing_one(self):
+        self._sale([(self.bread, 2, "1.00", None, "USD")], days_ago=2)  # before the cost was known
+        Product.objects.filter(id=self.bread.id).update(cost=Decimal("0.60"), cost_currency="USD")
+        self._sale([(self.bread, 3, "1.00", "0.60", "USD"), (self.sugar, 2, "2.00", "1.50", "USD")])
+
+        text = format_period_summary("This week", self._period(), lang="en", metric="profit")
+
+        self.assertNotIn("No cost yet", text)
+        self.assertIn("• Bread", text)  # under Most profitable
+        self.assertIn("1 sold without one", text)  # Monday's line still counted (lines, not units)
+
+    def test_a_product_still_without_a_cost_is_still_listed(self):
+        self._sale([(self.eggs, 4, "0.50", None, "USD"), (self.bread, 1, "1.00", "0.60", "USD")])
+
+        text = format_period_summary("This week", self._period(), lang="en", metric="profit")
+
+        self.assertIn("No cost yet: Eggs.", text)
+
+
 class CostExampleTest(_Shop2):
     def test_it_names_the_best_selling_costed_product(self):
         self._sale([(self.bread, 2, "1.00", "0.80", "USD"), (self.sugar, 9, "2.00", "1.50", "USD")])
@@ -125,22 +149,23 @@ class TextTest(SimpleTestCase):
 
     def test_profit_answer_shows_both_lines(self):
         text = format_period_summary("This week", self._data(), lang="en", metric="profit")
-        self.assertIn("Costs saved: 8 of 12 products.", text)
-        self.assertIn('Profit uses Sugar at R40.00. Changed? Send "Sugar costs R44.00".', text)
+        self.assertIn('Costs saved for 8 of 12 products. Price changed? Send "Sugar costs R41.00".', text)
 
     def test_the_cost_used_line_appears_once_however_many_products_were_sold(self):
         text = format_period_summary("This week", self._data(), lang="en", metric="profit")
-        self.assertEqual(text.count("Profit uses"), 1)
+        self.assertEqual(text.count("Price changed?"), 1)
 
     def test_revenue_answer_also_shows_them_when_profit_is_shown(self):
         text = format_period_summary("This week", self._data(), lang="en", metric="revenue")
-        self.assertIn("Costs saved: 8 of 12 products.", text)
-        self.assertIn("Profit uses Sugar", text)
+        self.assertIn("Costs saved for 8 of 12 products.", text)
+        self.assertIn('Send "Sugar costs', text)
 
-    def test_the_example_new_cost_is_a_tenth_higher(self):
-        text = format_period_summary("This week", self._data(cost_example=("Bread", Decimal("0.80"), "USD")),
-                                     lang="en", metric="profit")
-        self.assertIn('Send "Bread costs $0.88"', text)
+    def test_the_example_new_cost_is_a_round_number_above_the_cost(self):
+        """#418: cost + 10% ($0.88) read like a suggested price. A round number reads as a format."""
+        for cost, example in (("0.80", "$1.00"), ("16.00", "$17.00"), ("16.50", "$17.00")):
+            text = format_period_summary("This week", self._data(cost_example=("Bread", Decimal(cost), "USD")),
+                                         lang="en", metric="profit")
+            self.assertIn(f'Send "Bread costs {example}"', text, cost)
 
     def test_a_zero_cost_gets_a_sensible_example(self):
         text = format_period_summary("This week", self._data(cost_example=("Sample", Decimal("0.00"), "USD")),
@@ -151,8 +176,8 @@ class TextTest(SimpleTestCase):
         text = format_period_summary("This week", self._data(
             currency_profits={}, uncosted_lines=4, uncosted_products=["Coke"], cost_example=None, costed_products=0),
             lang="en", metric="profit")
-        self.assertIn("Costs saved: 0 of 12 products.", text)
-        self.assertNotIn("Profit uses", text)
+        self.assertIn("Costs saved for 0 of 12 products.", text)
+        self.assertNotIn("Price changed?", text)
 
     def test_no_products_means_no_coverage_line(self):
         text = format_period_summary("This week", self._data(total_products=0, costed_products=0), lang="en", metric="profit")
@@ -167,12 +192,12 @@ class TextTest(SimpleTestCase):
         for metric in ("profit", "revenue"):
             text = format_period_summary("This week", self._data(), lang="en", metric=metric, show_profit=False)
             self.assertNotIn("Costs saved", text, metric)
-            self.assertNotIn("Profit uses", text, metric)
+            self.assertNotIn("Price changed?", text, metric)
 
     def test_shona_renders(self):
         text = format_period_summary("Vhiki rino", self._data(), lang="sn", metric="profit")
         self.assertIn("Zvine cost: 8 pa12.", text)
-        self.assertIn("Purofiti yashandisa cost yeSugar: R40.00.", text)
+        self.assertIn('Cost yachinja? Tumira "ndinotenga Sugar paR41.00".', text)
 
 
 class DailySummaryTextTest(_Shop2):
@@ -184,10 +209,24 @@ class DailySummaryTextTest(_Shop2):
         owner = format_business_summary(snap, lang="en", show_profit=True)
         staff = format_business_summary(snap, lang="en", show_profit=False)
 
-        self.assertIn("Costs saved: 1 of 3 products.", owner)
-        self.assertIn('Profit uses Bread at $0.80. Changed? Send "Bread costs $0.88".', owner)
+        self.assertIn('Costs saved for 1 of 3 products. Price changed? Send "Bread costs $1.00".', owner)
         self.assertNotIn("Costs saved", staff)
-        self.assertNotIn("Profit uses", staff)
+        self.assertNotIn("Price changed?", staff)
+
+
+class DailySummaryOrderTest(_Shop2):
+    def test_sales_then_profit_then_rankings_then_the_cost_line_last(self):
+        """#422 review: the daily summary's order was only checked with assertIn."""
+        for p in (self.bread, self.sugar):
+            Product.objects.filter(id=p.id).update(cost=Decimal("0.50"), cost_currency="USD")
+        self._sale([(self.bread, 2, "1.00", "0.50", "USD"), (self.sugar, 3, "2.00", "0.50", "USD")])
+        lines = format_business_summary(build_business_snapshot(self.company, timezone.localdate()),
+                                        lang="en", show_profit=True).split("\n")
+
+        order = [next(i for i, line in enumerate(lines) if line.startswith(prefix))
+                 for prefix in ("Sales:", "Profit:", "Top sellers:", "Most profitable:", "Costs saved for")]
+        self.assertEqual(order, sorted(order))
+        self.assertTrue(lines[-1].startswith("Costs saved for"), lines)
 
 
 class AssistantNeverSeesThemTest(_Shop):
@@ -207,7 +246,7 @@ class AssistantNeverSeesThemTest(_Shop):
         run_async_test(go())
 
         sent = {c.args[0]: c.args[1] for c in client.send_message.await_args_list}
-        self.assertIn("Costs saved:", sent[OWNER_PHONE])
-        self.assertIn("Profit uses Bread", sent[OWNER_PHONE])
-        for leak in ("Costs saved", "Profit uses", "costs "):
+        self.assertIn("Costs saved for", sent[OWNER_PHONE])
+        self.assertIn('Send "Bread costs', sent[OWNER_PHONE])
+        for leak in ("Costs saved", "Price changed?", "costs "):
             self.assertNotIn(leak, sent[ASSISTANT_PHONE], leak)

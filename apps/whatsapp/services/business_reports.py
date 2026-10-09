@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import datetime as dt
 from datetime import datetime, time, timedelta
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 import logging
 import re
 from typing import Iterable
@@ -308,26 +308,20 @@ def _no_profit_lines(names: list[str], lang: str, mismatched: int = 0) -> list[s
     return lines
 
 
-def _costs_saved_line(costed: int, total: int, lang: str) -> list[str]:
-    """Where the owner stands: how many of the shop's products have a cost saved."""
+def _cost_footer(costed: int, total: int, cost_example, lang: str) -> list[str]:
+    """One closing line (#418): how many of the shop's products have a cost, and how to change
+    one, since costs go stale and the bot only asks once. The example is a round number just
+    above a cost it used, so it reads as a format to copy, not a suggested price."""
     from apps.whatsapp.services.webhook_handler import t
 
-    if not total:
-        return []
-    return [t("summary.costs_saved", lang=lang, have=costed, total=total)]
-
-
-def _cost_used_line(cost_example, lang: str) -> list[str]:
-    """One line naming a cost the profit used and how to change it. Costs go stale and the
-    bot only asks once, so the owner needs to see which cost it is working from."""
-    from apps.whatsapp.services.webhook_handler import t
-
-    if not cost_example:
-        return []
-    name, cost, currency = cost_example
-    new = cost * Decimal("1.1") if cost > 0 else Decimal("1")
-    return [t("summary.profit_cost_used", lang=lang, name=name, cost=format_price(cost, currency),
-              example=format_price(new.quantize(Decimal("0.01")), currency))]
+    parts = []
+    if total:
+        parts.append(t("summary.costs_saved", lang=lang, have=costed, total=total))
+    if cost_example:
+        name, cost, currency = cost_example
+        example = cost.to_integral_value(rounding=ROUND_FLOOR) + 1
+        parts.append(t("summary.profit_cost_used", lang=lang, name=name, example=format_price(example, currency)))
+    return ["", " ".join(parts)] if parts else []
 
 
 def _most_profitable_lines(profit_products: dict, lang: str) -> list[str]:
@@ -363,6 +357,8 @@ def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None,
         revenue=_display_revenue(snapshot.currency_revenues), sale_word=sale_word,
     ))
 
+    # Sales, then profit, then the rankings, then one line about costs (#418).
+    footer: list[str] = []
     if not show_profit:
         pass
     elif snapshot.currency_profits:
@@ -370,11 +366,10 @@ def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None,
         if snapshot.uncosted_lines:
             lines.append(_partial_profit_note(
                 snapshot.uncosted_products, snapshot.uncosted_lines, lang, snapshot.mismatched_currency_lines))
-        lines.extend(_costs_saved_line(snapshot.costed_products, snapshot.total_products, lang))
-        lines.extend(_cost_used_line(snapshot.cost_example, lang))
+        footer = _cost_footer(snapshot.costed_products, snapshot.total_products, snapshot.cost_example, lang)
     elif snapshot.sales_count and snapshot.uncosted_lines:
         lines.extend(_no_profit_lines(snapshot.uncosted_products, lang, snapshot.mismatched_currency_lines))
-        lines.extend(_costs_saved_line(snapshot.costed_products, snapshot.total_products, lang))
+        footer = _cost_footer(snapshot.costed_products, snapshot.total_products, None, lang)
 
     if snapshot.top_products:
         lines.append("")
@@ -384,6 +379,7 @@ def format_business_summary(snapshot: BusinessSnapshot, lang: str | None = None,
 
     if show_profit:
         lines.extend(_most_profitable_lines(snapshot.profit_products, lang))
+    lines.extend(footer)
 
     # Closing line based on revenue
     if snapshot.revenue == 0:
@@ -629,21 +625,24 @@ def format_period_summary(
 
     names = data.get("uncosted_products", [])
     mismatched = data.get("mismatched_currency_lines", 0)
+    costed, total = data.get("costed_products", 0), data.get("total_products", 0)
     profit_lines: list[str] = []
+    footer: list[str] = []
     if profits:
         profit_lines.append(t("summary.profit_line", lang=lang, profit=_display_profit(profits)))
         if uncosted:
             profit_lines.append(_partial_profit_note(names, uncosted, lang, mismatched))
-        profit_lines.extend(_costs_saved_line(data.get("costed_products", 0), data.get("total_products", 0), lang))
-        profit_lines.extend(_cost_used_line(data.get("cost_example"), lang))
+        footer = _cost_footer(costed, total, data.get("cost_example"), lang)
     elif uncosted:
         # Nothing to say when there are no priced lines at all.
         profit_lines.extend(_no_profit_lines(names, lang, mismatched))
-        profit_lines.extend(_costs_saved_line(data.get("costed_products", 0), data.get("total_products", 0), lang))
+        footer = _cost_footer(costed, total, None, lang)
 
+    # Sales, then profit, then the rankings, then one line about costs (#418).
     if metric == "profit":
-        lines = [period_label, *profit_lines, t("summary.revenue_line", lang=lang, revenue=revenue_str, sale_word=sale_word)]
+        lines = [period_label, t("summary.revenue_line", lang=lang, revenue=revenue_str, sale_word=sale_word), *profit_lines]
         lines.extend(_most_profitable_lines(data.get("profit_products", {}), lang))
+        lines.extend(footer)
         return "\n".join(lines)
 
     lines = [t("period.total_line", lang=lang, label=period_label, revenue=revenue_str, sale_word=sale_word)]
@@ -655,6 +654,8 @@ def format_period_summary(
         for name, qty in data["top_products"][:3]:
             lines.append(t("summary.top_seller_line", lang=lang, name=name, qty=qty))
     lines.extend(_most_profitable_lines(data.get("profit_products", {}), lang))
+    if profits:
+        lines.extend(footer)
     return "\n".join(lines)
 
 

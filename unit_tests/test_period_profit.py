@@ -231,12 +231,13 @@ class FormatPeriodProfitTest(SimpleTestCase):
         self.assertIn("Profit: $4.00", text)
         self.assertIn("Top sellers:", text)
 
-    def test_profit_question_leads_with_profit_then_revenue(self):
+    def test_profit_question_leads_with_sales_then_profit(self):
+        """#418: sales first, then profit (it read backwards on staging)."""
         text = format_period_summary("Last 2 days", self._data(), lang="en", metric="profit")
         lines = text.split("\n")
         self.assertEqual(lines[0], "Last 2 days")
-        self.assertEqual(lines[1], "Profit: $4.00")
-        self.assertIn("Revenue: $10.00 from 4 sales", text)
+        self.assertEqual(lines[1], "Sales: $10.00 (4 sales)")
+        self.assertEqual(lines[2], "Profit: $4.00")
         self.assertNotIn("Top sellers", text)
 
     def test_partial_data_says_some_sales_have_no_cost(self):
@@ -261,6 +262,24 @@ class FormatPeriodProfitTest(SimpleTestCase):
         self.assertIn("$1.00", text)
         self.assertIn("R12.00", text)
 
+    def test_profit_answer_layout(self):
+        """#418: sales, profit, the ranking, then one closing line about costs."""
+        ranking = {"USD": [("Sugar", Decimal("28.00")), ("Bread", Decimal("16.00"))]}
+        data = self._data(profit_products=ranking, cost_example=("Bread", Decimal("16.00"), "USD"),
+                          costed_products=2, total_products=2)
+        lines = format_period_summary("Today (7 Oct)", data, lang="en", metric="profit").split("\n")
+        self.assertEqual(lines, [
+            "Today (7 Oct)",
+            "Sales: $10.00 (4 sales)",
+            "Profit: $4.00",
+            "",
+            "Most profitable:",
+            "  • Sugar: $28.00",
+            "  • Bread: $16.00",
+            "",
+            'Costs saved for 2 of 2 products. Price changed? Send "Bread costs $17.00".',
+        ])
+
     def test_most_profitable_block(self):
         ranking = {"USD": [("Bread", Decimal("2.00")), ("Eggs", Decimal("1.20"))]}
         text = format_period_summary("This week", self._data(profit_products=ranking), lang="en", metric="profit")
@@ -275,7 +294,8 @@ class FormatPeriodProfitTest(SimpleTestCase):
         ranking = {"USD": [("Bread", Decimal("2.00")), ("Eggs", Decimal("1.20"))]}
         for metric in ("profit", "revenue"):
             text = format_period_summary("Nhasi (06 Oct)", self._data(profit_products=ranking), lang="sn", metric=metric)
-            for english in ("Revenue", "from 4 sales", "Top sellers", "Most profitable", "Profit"):
+            for english in ("Revenue", "Sales:", "from 4 sales", "Top sellers", "Most profitable", "Profit",
+                            "Costs saved", "Price changed"):
                 self.assertNotIn(english, text, (metric, english))
 
     def test_shona_no_sales(self):
@@ -415,7 +435,7 @@ class UncostedProductsTextTest(SimpleTestCase):
         text = format_period_summary("Yesterday (05 Oct)", self._data(), lang="en", metric="profit")
         self.assertIn("e.g. *book costs 0.80*", text)  # the example uses a product they actually sold
         self.assertIn("No cost yet: book, pen, tape.", text)
-        self.assertIn("Revenue: $8.00 from 3 sales", text)
+        self.assertIn("Sales: $8.00 (3 sales)", text)
 
     def test_partial_answer_names_the_products_left_out(self):
         text = format_period_summary(

@@ -25,7 +25,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 
 from apps.catalog.models import Product
-from apps.core.currencies import CURRENCIES, format_price
+from apps.core.currencies import CURRENCIES, DEFAULT_CURRENCY, format_price
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale, SaleItem
 from apps.sales.services import MAX_UNIT_PRICE, find_product_by_name
@@ -325,11 +325,19 @@ def _save_confirmed_cost(company_id: int, product_id: int, amount: Decimal, curr
 def _products_needing_cost(sale_id: int) -> list[Product]:
     """Distinct active products in this sale with no cost that we may still ask about."""
     seen: dict[int, Product] = {}
-    for item in SaleItem.objects.filter(sale_id=sale_id).select_related("product"):
+    for item in SaleItem.objects.filter(sale_id=sale_id).select_related("product", "product__company"):
         p = item.product
         if p.active and p.cost is None and p.cost_ask_count < MAX_COST_ASKS:
+            # The question's example amount is in the currency of this sale (#418: "$1.00"
+            # in a rand shop read wrong). Read here, while the database is in reach.
+            p.example_currency = item.currency or p.company.currency
             seen.setdefault(p.id, p)
     return list(seen.values())[:MAX_PRODUCTS_PER_QUESTION]
+
+
+def _example_amount(product: Product) -> str:
+    """1.00 in the sale's currency, e.g. "R1.00" in a rand shop."""
+    return format_price(Decimal("1.00"), getattr(product, "example_currency", None) or DEFAULT_CURRENCY)
 
 
 @db_sync_to_async
@@ -450,7 +458,7 @@ async def open_cost_question_after_sale(company_id: int, sale_id: int) -> list[P
 def sale_confirmed_with_cost_question(products: list[Product], lang: str) -> str:
     """The 'sale recorded' message and the cost question as one message."""
     if len(products) == 1:
-        return t("cost.ask_after_sale_one", lang=lang, name=products[0].name)
+        return t("cost.ask_after_sale_one", lang=lang, name=products[0].name, example=_example_amount(products[0]))
     names = "\n".join(f"• {p.name}" for p in products)
     example = ", ".join(f"{p.name} 1.00" for p in products[:2])
     return t("cost.ask_after_sale_many", lang=lang, names=names, example=example)
@@ -531,7 +539,7 @@ async def ask_owner_after_assistant_sale(company_id: int, sale_id: int) -> bool:
 def owner_cost_question(products: list[Product], lang: str) -> str:
     """The cost question as it is sent to the owner when an assistant made the sale."""
     if len(products) == 1:
-        return t("cost.ask_owner_one", lang=lang, name=products[0].name)
+        return t("cost.ask_owner_one", lang=lang, name=products[0].name, example=_example_amount(products[0]))
     names = "\n".join(f"• {p.name}" for p in products)
     example = ", ".join(f"{p.name} 1.00" for p in products[:2])
     return t("cost.ask_owner_many", lang=lang, names=names, example=example)

@@ -72,7 +72,7 @@
     },
     "summary": {
         "heading": "Summary for {date}",
-        "revenue_line": "Revenue: {revenue} from {sale_word}",
+        "revenue_line": "Sales: {revenue} ({sale_word})",
         "sale_word": "{count} sale{plural}",
         "top_sellers": "Top sellers:",
         "top_seller_line": "  • {name}: {qty}",
@@ -87,8 +87,8 @@
         "profit_uncosted_products": "No cost yet: {products}.",
         "and_more": "+{count} more",
         "profit_currency_mismatch": "Some costs use a different currency from the selling price, so they're not included.",
-        "costs_saved": "Costs saved: {have} of {total} products.",
-        "profit_cost_used": "Profit uses {name} at {cost}. Changed? Send \"{name} costs {example}\"."
+        "costs_saved": "Costs saved for {have} of {total} products.",
+        "profit_cost_used": "Price changed? Send \"{name} costs {example}\"."
     },
     "period": {
         "label_today": "Today ({date})",
@@ -179,14 +179,14 @@
         "not_understood": "I couldn't find the product or amount. Send: bread costs 0.80",
         "saved_header": "✓ Cost saved — {name} costs {cost}.",
         "saved_detail": "Customer pays: {price}\nYou pay: {cost}\nProfit: {profit} each",
-        "ask_after_sale_one": "✓ Sale recorded!\n\nTo track profit, how much do you pay for one *{name}*?\nReply with the amount, e.g. *$1.00*\nOr *Skip*.",
+        "ask_after_sale_one": "✓ Sale recorded!\n\nTo track profit, how much do you pay for one *{name}*?\nReply with the amount, e.g. *{example}*\nOr *Skip*.",
         "ask_after_sale_many": "✓ Sale recorded!\n\nTo track profit, how much do you pay for each?\n{names}\n\nReply like: *{example}*\nOr *Skip*.",
         "saved_footer": "I'll use this to calculate your profit.",
         "owner_only": "Only the shop owner can set product costs.",
         "profit_owner_only": "Only the shop owner can see profit.",
         "zero_cost": "{name} at {cost} means you pay nothing for it. Is that right?",
         "changed": "{name}'s cost changed, so I didn't save this one. Send it again if needed.",
-        "ask_owner_one": "Your assistant recorded a sale.\n\nTo track profit, how much do you pay for one *{name}*?\nReply with the amount, e.g. *$1.00*\nOr *Skip*.",
+        "ask_owner_one": "Your assistant recorded a sale.\n\nTo track profit, how much do you pay for one *{name}*?\nReply with the amount, e.g. *{example}*\nOr *Skip*.",
         "ask_owner_many": "Your assistant recorded a sale.\n\nTo track profit, how much do you pay for each?\n{names}\n\nReply like: *{example}*\nOr *Skip*."
     },
     "sale": {
