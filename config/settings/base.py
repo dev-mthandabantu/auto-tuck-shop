@@ -7,6 +7,8 @@ from pathlib import Path
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
+from config.sentry import PRIVACY_INTEGRATIONS, PRIVACY_OPTIONS
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -22,16 +24,16 @@ environ.Env.read_env(BASE_DIR / ".env")
 # Sentry Configuration
 sentry_sdk.init(
     dsn=env("SENTRY_DSN", default=None),
-    integrations=[DjangoIntegration()],
+    integrations=[DjangoIntegration(), *PRIVACY_INTEGRATIONS],
     # Set traces_sample_rate to 1.0 to capture 100% of transactions for performance monitoring.
     # Adjust this value in production to reduce volume
     traces_sample_rate=env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.1),
     # Set profiles_sample_rate to profile 10% of sampled transactions.
     profiles_sample_rate=env.float("SENTRY_PROFILES_SAMPLE_RATE", default=0.1),
-    # Add data like request headers and IP for users
-    send_default_pii=True,
     # Set environment
     environment=env("SENTRY_ENVIRONMENT", default="production"),
+    # Internal IDs only: no phone numbers, shop names or message text (#437)
+    **PRIVACY_OPTIONS,
 )
 
 # SECURITY WARNING: keep the secret key used in production secret!

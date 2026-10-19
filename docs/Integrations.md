@@ -98,7 +98,32 @@ Migrations are immutable once committed — never edit or delete an existing mig
 
 Optional error tracking. Initialised only if `SENTRY_DSN` is set. Tagged with `SENTRY_ENVIRONMENT` (`production` or `staging`).
 
-**User context:** Every webhook request sets `sentry_sdk.set_user` with the sender’s phone number. Once the profile resolves, it is enriched with the shop name — so issues show “Sweetwaters” instead of an IP.
+**Sentry context (#437):** an event may carry internal IDs only. Phone numbers, shop names, WhatsApp profile names and message text stay out. The IDs are pseudonymous, not anonymous: anyone with Django admin or database access can open the record behind them, which is how you debug. Sentry access alone is no longer enough to identify a pilot shop. This applies to every place the WhatsApp views set context (text, button, audio and media handlers), and to any new Sentry call elsewhere in the app.
+
+What the webhook sets, through `_set_sentry_context` in `apps/whatsapp/views.py`, as soon as the sender is looked up (so a failed media download still says whose message it was), then again once the inbound message is saved:
+
+| Field | Value | Look it up at |
+|---|---|---|
+| `user.id` | `UserProfile.pk` (known senders only) | `/admin/core/userprofile/<id>/change/` |
+| tag `company_id` | `profile.company_id` | `/admin/core/company/<id>/change/` |
+| tag `waitlist_entry_id` | `WaitlistEntry.pk` (waitlisted senders) | `/admin/core/waitlistentry/<id>/change/` |
+| tag `inbound_message_id` | the inbound `WhatsAppMessage.pk` (every sender) | `/admin/whatsapp/whatsappmessage/<id>/change/` |
+| tag `sender_status` | `known_user`, `waitlisted` or `unknown` | |
+
+Each message in a webhook is handled in its own Sentry isolation scope, so one sender's IDs, context and breadcrumbs can't reach the next message's event. An exception is captured inside that scope, while the IDs are still on it, then re-raised. The capture is marked unhandled, the same way Django's integration marks it, so unhandled-error alerts and filters still see webhook crashes; Django's own capture of the same exception is then dropped by Sentry's default dedupe. Performance transactions belong to the whole request, not to one message, so they carry none of these IDs; their spans still nest under the request as before. Meta's message ID (`wamid`) is not used: it embeds the sender's number in base64. The `llm_parse` context set after parsing carries intent and confidence only, since the LLM's `notes` repeat the message.
+
+Sentry also collects data on its own, so `config/sentry.py` sets `PRIVACY_OPTIONS` and `PRIVACY_INTEGRATIONS`, which `config/settings/base.py` passes to `sentry_sdk.init`:
+
+- `LoggingIntegration(level=None)`. Log lines become breadcrumbs, and many carry message text or the LLM's full response (`message_parser.py` logs both at INFO). Log breadcrumbs are off; `logger.error` still creates events, and Fly logs keep the full trail. SQL and HTTP breadcrumbs stay.
+- `include_local_variables=False`. Stack frames held `sender`, `body`, `profile` and the raw webhook payload in nearly every frame. Tracebacks no longer show variable values; debug from the IDs above.
+- `max_request_body_size="never"`. The webhook body is the Meta payload (phone, profile name, message text). `send_default_pii` does not control this.
+- `send_default_pii=False`. Drops cookies, IP and user headers. Requests come from Meta's servers, so nothing useful is lost.
+- `before_send=redact_personal_data`. Error messages, tags and the remaining breadcrumbs can still include a number. This replaces phone numbers with `[phone]` and wamids with `[wamid]` in messages, breadcrumbs, tags, extra, contexts (except `trace`) and exception messages. It's a safety net for numbers written without spaces (`077 123 4567` gets through) and it leaves longer digit runs such as Meta media IDs alone. It can't spot a shop name or message text, so don't put those in an error message or a tag.
+- `before_send_transaction=redact_transaction`. Performance transactions (`SENTRY_TRACES_SAMPLE_RATE`, 10% by default) skip `before_send`. Their spans record outbound URLs whatever `send_default_pii` says: the boto3 integration sets `aws.request.url` on every R2 call, and R2 media keys are `YYYY/MM/DD/<phone>/<media_id>`. This applies the same redaction plus span descriptions and URL and query fields.
+
+Two things this doesn't use yet. `data_collection` is the SDK's newer per-category replacement for `send_default_pii`, but in sentry-sdk 2.66 it's still under `_experiments`. Sentry's server-side Advanced Data Scrubbing can run a regex over every string (source `$string`, spans included) and has no built-in phone rule; adding one in project settings would be a second layer behind these options.
+
+These options don't replace checking the event. `unit_tests/test_sentry_context.py` sends real-shaped webhooks through the view with a fake Sentry transport and asserts the captured event holds the IDs and none of the personal data. Extend it when you add context.
 
 **Release tracking:** `deploy-production.yml` creates a Sentry release after every prod deploy (using `SENTRY_AUTH_TOKEN` secret). Issues auto-resolve when they stop appearing in a new release, and each issue shows which version introduced it.
 

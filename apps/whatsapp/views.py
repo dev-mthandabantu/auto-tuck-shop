@@ -2,7 +2,10 @@ import hashlib
 import hmac
 import json
 import logging
+import sys
 from enum import Enum
+
+import sentry_sdk
 
 from django.conf import settings
 from django.db import IntegrityError, close_old_connections
@@ -10,6 +13,7 @@ from django.http import HttpRequest, HttpResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from sentry_sdk.utils import event_from_exception
 
 from apps.core.models import UserProfile, WaitlistEntry
 from apps.whatsapp.models import WhatsAppMessage
@@ -94,6 +98,40 @@ def _lookup_sender(sender: str) -> tuple[SenderStatus, UserProfile | None, Waitl
     return (SenderStatus.UNKNOWN, None, None)
 
 
+def _set_sentry_context(
+    status: SenderStatus,
+    profile: UserProfile | None,
+    waitlist_entry: WaitlistEntry | None,
+    inbound_message: WhatsAppMessage | None = None,
+) -> None:
+    """
+    Tag the current Sentry scope with internal IDs only (#437).
+
+    No phone number, shop name or message text: the IDs open the same records
+    in Django admin. Each message runs in its own isolation scope (see post()),
+    so nothing set here reaches the next message in the same webhook.
+    """
+    if profile:
+        sentry_sdk.set_user({"id": profile.pk})
+        sentry_sdk.set_tag("company_id", profile.company_id)
+    if waitlist_entry:
+        sentry_sdk.set_tag("waitlist_entry_id", waitlist_entry.pk)
+    if inbound_message:
+        sentry_sdk.set_tag("inbound_message_id", inbound_message.pk)
+    sentry_sdk.set_tag("sender_status", status.value)
+
+
+def _capture_unhandled_exception() -> None:
+    """Capture the current exception as Django's integration would, so Sentry
+    still marks it unhandled (the in-scope capture wins the dedupe)."""
+    event, hint = event_from_exception(
+        sys.exc_info(),
+        client_options=sentry_sdk.get_client().options,
+        mechanism={"type": "django", "handled": False},
+    )
+    sentry_sdk.capture_event(event, hint=hint)
+
+
 def _is_duplicate_message(whatsapp_message_id: str) -> bool:
     if not whatsapp_message_id:
         return False
@@ -114,11 +152,12 @@ def _record_inbound_message(
     media_url: str = "",
     r2_media_url: str = "",
     transcribed_text: str = "",
-) -> None:
+) -> WhatsAppMessage | None:
     """
     Record an inbound WhatsApp message to the database.
 
     This is a fire-and-forget operation - failures won't break message processing.
+    Returns the new row, or None if it couldn't be saved.
     
     Duplicate detection: If whatsapp_message_id is already in the DB, this will
     raise IntegrityError (due to unique constraint). We catch it and log a warning
@@ -126,7 +165,7 @@ def _record_inbound_message(
     the same webhook message.
     """
     try:
-        WhatsAppMessage.objects.create(
+        inbound_message = WhatsAppMessage.objects.create(
             direction=WhatsAppMessage.Direction.INBOUND,
             message_type=message_type,
             phone_number=phone_number,
@@ -148,6 +187,7 @@ def _record_inbound_message(
             from django.utils import timezone
             from apps.core.models import Company
             Company.objects.filter(pk=user_profile.company_id).update(first_message_date=timezone.localdate())
+        return inbound_message
     except IntegrityError as e:
         if "whatsapp_message_id" in str(e):
             logger.warning(f"Duplicate message detected: {whatsapp_message_id}. Ignoring.")
@@ -155,6 +195,7 @@ def _record_inbound_message(
             logger.error(f"Failed to record inbound message: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Failed to record inbound message: {e}", exc_info=True)
+    return None
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -206,7 +247,16 @@ class WhatsAppWebhookView(View):
                 print(f"[DEBUG VIEW POST] Found {len(messages)} messages", flush=True)
 
                 for message in messages:
-                    self._handle_message(message)
+                    # One scope per message, so one sender's Sentry IDs,
+                    # context and breadcrumbs never reach the next (#437).
+                    # Capture here, while this message's IDs are still on the
+                    # scope; Django's capture of the same exception is deduped.
+                    with sentry_sdk.isolation_scope():
+                        try:
+                            self._handle_message(message)
+                        except Exception:
+                            _capture_unhandled_exception()
+                            raise
 
                 for status in value.get("statuses", []):
                     self._handle_status_update(status)
@@ -233,9 +283,6 @@ class WhatsAppWebhookView(View):
                 message_id, message_type,
             )
             return
-
-        import sentry_sdk
-        sentry_sdk.set_user({"id": sender, "username": sender})
 
         if _is_duplicate_message(message_id):
             logger.info("Duplicate message %s from %s, skipping", message_id, sender)
@@ -344,12 +391,11 @@ class WhatsAppWebhookView(View):
         # Lookup sender for recording
         phone_number = _extract_phone_number(sender)
         status, profile, waitlist_entry = _lookup_sender(sender)
-        if profile:
-            import sentry_sdk
-            sentry_sdk.set_user({"id": sender, "username": sender, "name": profile.company.name})
+
+        _set_sentry_context(status, profile, waitlist_entry)
 
         # Record inbound button response
-        _record_inbound_message(
+        inbound_message = _record_inbound_message(
             phone_number=phone_number,
             message_type=WhatsAppMessage.MessageType.BUTTON_RESPONSE,
             button_id=button_id,
@@ -359,6 +405,7 @@ class WhatsAppWebhookView(View):
             user_profile=profile,
             waitlist_entry=waitlist_entry,
         )
+        _set_sentry_context(status, profile, waitlist_entry, inbound_message)
 
         # Mark inbound button response as read so WhatsApp shows read receipts
         if settings.ENABLE_WHATSAPP_MARK_AS_READ:
@@ -426,14 +473,13 @@ class WhatsAppWebhookView(View):
 
         # Lookup sender status
         status, profile, waitlist_entry = _lookup_sender(sender)
+
+        _set_sentry_context(status, profile, waitlist_entry)
         phone_number = _extract_phone_number(sender)
         print(f"[DEBUG VIEW] Sender status: {status.value}, phone={phone_number}", flush=True)
-        if profile:
-            import sentry_sdk
-            sentry_sdk.set_user({"id": sender, "username": sender, "name": profile.company.name})
 
         # Record inbound message
-        _record_inbound_message(
+        inbound_message = _record_inbound_message(
             phone_number=phone_number,
             message_type=WhatsAppMessage.MessageType.TEXT,
             content=body,
@@ -441,6 +487,7 @@ class WhatsAppWebhookView(View):
             user_profile=profile,
             waitlist_entry=waitlist_entry,
         )
+        _set_sentry_context(status, profile, waitlist_entry, inbound_message)
 
         # Mark inbound message as read (so blue ticks appear)
         if settings.ENABLE_WHATSAPP_MARK_AS_READ:
@@ -484,10 +531,12 @@ class WhatsAppWebhookView(View):
 
         # Lookup sender status
         status, profile, waitlist_entry = _lookup_sender(sender)
+
+        _set_sentry_context(status, profile, waitlist_entry)
         phone_number = _extract_phone_number(sender)
 
         # Record inbound message (R2 URL is populated later during async processing)
-        _record_inbound_message(
+        inbound_message = _record_inbound_message(
             phone_number=phone_number,
             message_type=WhatsAppMessage.MessageType.AUDIO,
             content="[Audio message]",
@@ -498,6 +547,7 @@ class WhatsAppWebhookView(View):
             r2_media_url="",
             raw_payload=message,
         )
+        _set_sentry_context(status, profile, waitlist_entry, inbound_message)
 
         # Mark inbound audio message as read
         if settings.ENABLE_WHATSAPP_MARK_AS_READ:
@@ -542,6 +592,8 @@ class WhatsAppWebhookView(View):
 
         # Lookup sender status
         status, profile, waitlist_entry = _lookup_sender(sender)
+
+        _set_sentry_context(status, profile, waitlist_entry)
         phone_number = _extract_phone_number(sender)
 
         # Download media and upload to R2
@@ -552,7 +604,7 @@ class WhatsAppWebhookView(View):
         if caption:
             content = f"{content}: {caption}"
 
-        _record_inbound_message(
+        inbound_message = _record_inbound_message(
             phone_number=phone_number,
             message_type=WhatsAppMessage.MessageType.UNKNOWN,  # Add specific types later if needed
             content=content,
@@ -563,6 +615,7 @@ class WhatsAppWebhookView(View):
             r2_media_url=r2_url or "",
             raw_payload=message,
         )
+        _set_sentry_context(status, profile, waitlist_entry, inbound_message)
 
         logger.info(f"Saved {media_type} message from {sender}, R2 URL: {r2_url}")
 

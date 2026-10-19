@@ -119,11 +119,10 @@ async def process_audio_message_async(
 
         import sentry_sdk
         sentry_sdk.set_tag("intent", result.intent)
+        # Scores only: the LLM's notes repeat the message text (#437)
         sentry_sdk.set_context("llm_parse", {
             "intent": result.intent,
             "confidence": result.confidence,
-            "message_id": message_id,
-            "notes": result.notes,
         })
 
         from apps.core.models import UserProfile as UP
