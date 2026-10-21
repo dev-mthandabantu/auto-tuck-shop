@@ -352,6 +352,44 @@ class QueryRoutingTest(TransactionTestCase):
         self.assertTrue(text.startswith("Today ("))
         self.assertIn("Profit: $0.50", text)
 
+    def test_itemised_routes_to_the_list_not_the_summary(self):
+        """Regression for Omar's review on #425: nothing previously tested
+        that detail_level="itemised" actually reaches the itemised-list
+        branch in _handle_sales_query, rather than falling through to the
+        ordinary summary. Deleting that branch left all other tests
+        passing — this is the one that would have caught it."""
+        send = self._ask(timeframe="days", period_count=2, detail_level="itemised")
+
+        text = send.await_args.args[1]
+        self.assertTrue(text.startswith("Last 2 days"))
+        self.assertIn("Bread x", text)
+        # the sale from 5 days ago must not be counted in a 2-day window
+        self.assertNotIn("x 3", text)
+
+    def test_detail_level_none_still_gives_the_summary(self):
+        """Same question, but detail_level=None (the default) — must NOT be
+        routed to the itemised list."""
+        send = self._ask(timeframe="days", period_count=2, detail_level=None)
+
+        text = send.await_args.args[1]
+        self.assertIn("from 2 sales", text)
+        self.assertNotIn("Bread x", text)
+
+    def test_assistant_asking_for_itemised_profit_is_still_owner_only(self):
+        """The owner-only profit check runs before the itemised branch.
+        Confirm an assistant asking for itemised profit is still turned
+        away, not shown the list."""
+        assistant_profile = SimpleNamespace(company=self.company, role="assistant")
+        result = SimpleNamespace(
+            timeframe="today", period_count=None, metric="profit", detail_level="itemised",
+        )
+        send = AsyncMock()
+        with patch.object(webhook_handler, "_send_response", new=send):
+            run_async_test(webhook_handler._handle_sales_query("+263770000001", assistant_profile, result, lang="en"))
+
+        text = send.await_args.args[1]
+        self.assertIn("Only the shop owner can see profit", text)
+
 
 class ParserQueryFieldsTest(TestCase):
     def _parse(self, response):
@@ -376,6 +414,23 @@ class ParserQueryFieldsTest(TestCase):
     def test_negative_count_is_dropped(self):
         result = self._parse({"intent": "sales_query", "confidence": 1, "timeframe": "days", "period_count": -3})
         self.assertIsNone(result.period_count)
+
+    def test_detail_level_itemised_comes_through(self):
+        """Regression for Omar's review on #425: the routing test in
+        QueryRoutingTest builds its own SimpleNamespace(detail_level=...)
+        directly, so it can't see whether message_parser actually reads
+        detail_level off the LLM's response. Confirmed the gap by
+        temporarily replacing that assignment with `pass` — all other
+        tests in these three files still passed. test_shona_parsing.py
+        would catch it too, but it skips in CI without OPENROUTER_API_KEY,
+        so this is the one that runs every time."""
+        result = self._parse({"intent": "sales_query", "confidence": 1, "timeframe": "days",
+                              "period_count": 2, "detail_level": "itemised"})
+        self.assertEqual(result.detail_level, "itemised")
+
+    def test_detail_level_absent_is_none(self):
+        result = self._parse({"intent": "sales_query", "confidence": 1, "timeframe": "today"})
+        self.assertIsNone(result.detail_level)
 
 
 class UncostedProductsTest(_Base):

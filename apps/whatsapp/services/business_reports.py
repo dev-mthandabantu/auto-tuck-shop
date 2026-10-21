@@ -600,6 +600,94 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
     }
 
 
+def build_itemised_sales_list(company: Company, start_date: dt.date, end_date: dt.date) -> dict:
+    """Every product sold in a date range, grouped by product and sorted by
+    quantity (#408 — per Brighton's review, grouped rather than one line per
+    individual sale: a per-sale view hit the 20-line display limit almost
+    immediately for a week-long query, and owners asked "how much of each
+    did I sell", which is inherently a grouped question). Kept as plain
+    dicts, not formatted text, so the same data can later feed a dashboard
+    view, not just a WhatsApp message."""
+    start = timezone.make_aware(datetime.combine(start_date, time.min))
+    end = timezone.make_aware(datetime.combine(end_date, time.max))
+    sales = list(
+        Sale.objects.filter(
+            company=company,
+            status=Sale.Status.CONFIRMED,
+            sale_timestamp__gte=start,
+            sale_timestamp__lte=end,
+        ).prefetch_related("items__product")
+    )
+    # Grouped by (product, currency), not product alone — shops here take
+    # USD, rand and ZiG in the same day, so $3 of bread and R20 of bread
+    # must stay as two separate lines, never summed as one "$23" total
+    # (review on PR #425: the daily summary keeps currencies apart for the
+    # same reason).
+    products: dict[tuple[str, str | None], dict] = {}
+    currency_totals: dict[str, Decimal] = {}
+    for sale in sales:
+        for item in sale.items.all():
+            key = (item.product.name, item.currency)
+            entry = products.setdefault(key, {
+                "product": item.product.name, "quantity": 0, "revenue": Decimal("0.00"), "currency": item.currency,
+            })
+            entry["quantity"] += item.quantity
+            if item.unit_price is not None and item.currency:
+                entry["revenue"] += item.unit_price * item.quantity
+                currency_totals[item.currency] = (
+                    currency_totals.get(item.currency, Decimal("0.00"))
+                    + item.unit_price * item.quantity
+                )
+    entries = sorted(products.values(), key=lambda e: (-e["quantity"], e["product"]))
+    return {
+        "entries": entries,
+        "currency_totals": currency_totals,
+        "sales_count": len(sales),
+    }
+
+
+# A WhatsApp text message has a practical length limit; past this many
+# itemised lines, truncate rather than risk a message too long to send (#408).
+MAX_ITEMISED_LINES = 20
+
+
+def format_itemised_sales_list(period_label: str, data: dict, lang: str | None = None) -> str:
+    from apps.whatsapp.services.webhook_handler import t, DEFAULT_LANGUAGE
+
+    lang = lang or DEFAULT_LANGUAGE
+    # resolve_period()'s label is capitalised for standalone use (e.g. the
+    # #414 summary path, where it opens the sentence). Here it sits
+    # mid-sentence ("Zvawatengesa nhasi (09 Oct):"), so in Shona only,
+    # lowercase its first letter — per Brighton's review on #425.
+    if lang == "sn" and period_label:
+        period_label = period_label[0].lower() + period_label[1:]
+
+    if data["sales_count"] == 0:
+        return t("itemised_sales.no_sales", lang=lang, period=period_label)
+
+    lines = [t("itemised_sales.heading", lang=lang, period=period_label)]
+    entries = data["entries"]
+    shown = entries[:MAX_ITEMISED_LINES]
+    no_price = t("itemised_sales.no_price", lang=lang)
+    for entry in shown:
+        price = (
+            format_price(entry["revenue"], entry["currency"])
+            if entry["revenue"] and entry["currency"]
+            else no_price
+        )
+        lines.append(t(
+            "itemised_sales.item_line", lang=lang,
+            quantity=entry["quantity"], product=entry["product"], price=price,
+        ))
+
+    remaining = len(entries) - len(shown)
+    if remaining > 0:
+        lines.append(t("itemised_sales.more_items", lang=lang, count=remaining))
+
+    lines.append(t("itemised_sales.total_line", lang=lang, total=_display_revenue(data["currency_totals"])))
+    return "\n".join(lines)
+
+
 def format_period_summary(
     period_label: str, data: dict, lang: str | None = None, metric: str = "revenue", show_profit: bool = True
 ) -> str:

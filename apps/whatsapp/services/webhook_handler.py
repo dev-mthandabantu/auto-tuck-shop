@@ -463,7 +463,9 @@ async def _handle_sales_query(
     from apps.whatsapp.services.business_reports import (
         build_business_snapshot,
         build_comparison_context,
+        build_itemised_sales_list,
         build_period_summary,
+        format_itemised_sales_list,
         format_period_summary,
         resolve_period,
         upload_report_image,
@@ -487,6 +489,20 @@ async def _handle_sales_query(
     metric = getattr(result, "metric", "revenue")
     if metric == "profit" and not show_profit:
         await _send_response(sender, t("cost.profit_owner_only", lang=lang))
+        return
+
+    # Itemised request (#408) — every product sold, not just the top few.
+    # Checked before the summary branches below since "itemised" can apply
+    # to any timeframe (today, week, month), not just one of them. Reuses
+    # resolve_period() (#414) for date-range math and the period label,
+    # rather than a separate hand-rolled calculation per timeframe.
+    if getattr(result, "detail_level", None) == "itemised":
+        period = resolve_period(
+            timeframe, getattr(result, "period_count", None), today, force_range=True, lang=lang
+        )
+        start, end, label = period
+        data = await _s2a(build_itemised_sales_list, thread_sensitive=True)(company, start, end)
+        await _send_response(sender, format_itemised_sales_list(label, data, lang=lang))
         return
 
     # Multi-day aggregates (and any profit question) — return text only, no image card

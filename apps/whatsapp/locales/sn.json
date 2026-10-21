@@ -118,6 +118,14 @@
             "12": "Zvita"
         }
     },
+    "itemised_sales": {
+        "no_sales": "Hapana zvatengeswa {period}.",
+        "heading": "Zvawatengesa {period}:",
+        "item_line": "  • {product} x {quantity}, {price}",
+        "no_price": "—",
+        "more_items": "\n...ne {count} zvimwe.",
+        "total_line": "\nZvese pamwe: {total}"
+    },
     "report_card": {
         "your_shop": "Shopu Yako",
         "sales_this_week": "Zvatengeswa vhiki rino: {count}",

@@ -25,17 +25,18 @@ INTENT TYPES:
 - "sale": Recording a sale transaction (e.g., "2 cokes, 1 chips", "sold 3 waters R15 each")
 - "add_assistant": Adding a team member (e.g., "add assistant +27821234567")
 - "remove_assistant": Removing a team member (e.g., "remove assistant +27821234567", "delete assistant +27821234567")
-- "sales_query": Asking about past sales (e.g., "how much did I make today?", "what did I sell this week?")
+- "sales_query": Asking about past sales (e.g., "how much did I make today?", "what did I sell this week?", "show me everything I sold today", "list all my sales")
 - "language_switch": Owner or assistant wants the bot to reply in a different language from now on (e.g., "switch to shona", "respond in english", "please use English", "can you speak Shona", "change my language to Shona")
 - "set_cost": Owner states what they PAY to buy a product (its cost price), not what a customer paid (e.g., "bread costs me $0.80", "I buy eggs at 20 cents each", "change bread cost to 1 usd")
 - "other": General messages that don't fit above (greetings, deferrals, questions, acknowledgements)
 
 FOR "sales_query" INTENT:
-- "timeframe" is one of "today", "yesterday", "week" (this week, Monday to today), "month" (this month), "year" (this year), "days" or "weeks".
+- "timeframe" is one of "today", "yesterday", "week" (this week, Monday to today), "month" (this month), "year" (this year), "days" or "weeks". Defaults to "today" if no timeframe is stated at all.
 - For "days" or "weeks", also set "period_count" to the number N. These are rolling windows ending today: "past 2 days" / "last 2 days" / "these 2 days" → timeframe "days", period_count 2. "last 2 weeks" / "past 2 weeks" → "weeks", 2. "last week" or "past week" with no number → "weeks", 1. "last 10 days" → "days", 10.
 - "this week" is always "week", never "weeks".
 - "metric" is "profit" when the owner asks about profit, gain, or what they made AFTER costs ("how much profit did I make this week?", "what's my profit these past 2 days?", "ndakawana purofiti yakawanda sei?"). Otherwise it is "revenue" — including plain "how much did I make / sell ...", which asks about sales.
-- Examples: "how much did I make these past 2 days?" → timeframe "days", period_count 2, metric "revenue" | "how much profit did I make last 2 weeks?" → timeframe "weeks", period_count 2, metric "profit" | "profit today" → timeframe "today", metric "profit"
+- "detail_level" is "itemised" ONLY when the owner is explicitly asking to see every individual sale or item, not just a total or summary (e.g. "show me everything I sold", "list all my sales today", "what did I sell, all of it"). For an ordinary question about totals, top sellers, or profit (e.g. "how much did I make today?", "what did I sell this week?"), set "detail_level" to null — this defaults to a summary, not itemised.
+- Examples: "how much did I make these past 2 days?" → timeframe "days", period_count 2, metric "revenue" | "how much profit did I make last 2 weeks?" → timeframe "weeks", period_count 2, metric "profit" | "profit today" → timeframe "today", metric "profit" | "show me everything I sold today" → timeframe "today", detail_level "itemised" | "list all my sales" (no timeframe stated) → timeframe "today", detail_level "itemised" | "show me everything I sold the past 2 days" → timeframe "days", period_count 2, detail_level "itemised" | "ndatengesei zvese nhasi" (show me everything I sold today) → timeframe "today", detail_level "itemised" | "nditaurire zvandatengesa vhiki rino" (tell me what I sold this week — a summary, not a list) → timeframe "week", detail_level null
 
 FOR "set_cost" INTENT:
 - Use "set_cost" ONLY when the message says the owner is paying/buying/costing: words like "cost", "costs", "costs me", "cost price", "I pay", "I buy at", "I bought at", "buying price", "ndinotenga", "mutengo wekutenga". A cost price is what the SHOP pays its supplier.
@@ -158,6 +159,7 @@ RESPONSE FORMAT (JSON):
     "period_count": number of days or weeks (only with "days"/"weeks") or null,
     "metric": "revenue" | "profit",
     "product_filter": "product name" or null,
+    "detail_level": "summary" | "itemised" | null,  // "itemised" ONLY when the owner explicitly asks to see every sale/item (e.g. "show me everything I sold", "list all my sales") — otherwise null (defaults to a summary)
 
     // For "language_switch" intent only:
     "target_language": "en" | "sn" | null,

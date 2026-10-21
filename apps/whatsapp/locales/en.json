@@ -118,6 +118,14 @@
             "12": "December"
         }
     },
+    "itemised_sales": {
+        "no_sales": "No sales recorded for {period}.",
+        "heading": "{period}:",
+        "item_line": "  • {product} x {quantity}, {price}",
+        "no_price": "—",
+        "more_items": "\n...and {count} more.",
+        "total_line": "\nTotal: {total}"
+    },
     "report_card": {
         "your_shop": "Your Shop",
         "sales_this_week": "{count} sale{plural} this week",

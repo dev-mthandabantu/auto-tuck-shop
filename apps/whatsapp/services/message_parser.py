@@ -174,6 +174,7 @@ class UnifiedMessageResult:
     period_count: int | None = None  # N for timeframe "days"/"weeks" ("past 2 days" -> days, 2)
     metric: str = "revenue"  # "revenue" | "profit"
     product_filter: str | None = None
+    detail_level: str | None = None  # "itemised" when the owner wants every sale listed, else None (summary)
 
     # Language switch-specific (populated if intent="language_switch")
     target_language: str | None = None  # "en" | "sn"
@@ -413,6 +414,7 @@ async def parse_message_unified(
             except (TypeError, ValueError, OverflowError):
                 count = None
             result.period_count = count if count and count > 0 else None
+            result.detail_level = response.get("detail_level")
 
         elif intent == "language_switch":
             target = response.get("target_language")

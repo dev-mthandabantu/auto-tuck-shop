@@ -369,3 +369,60 @@ class ShonaParsingTestCase(TestCase):
         result = self._parse("what is my profit this week")
         self.assertEqual(result.timeframe, "week")
         self.assertEqual(result.metric, "profit")
+
+    # ------------------------------------------------------------------
+    # sales_query detail_level — itemised vs. summary (#408)
+    # ------------------------------------------------------------------
+
+    def test_show_everything_sold_today_is_itemised(self):
+        """'Show me everything I sold today' asks for every sale listed, not a
+        summary — detail_level must be 'itemised', not null."""
+        result = self._parse("Show me everything I sold today")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "today")
+        self.assertEqual(result.detail_level, "itemised")
+
+    def test_list_all_my_sales_no_timeframe_defaults_to_today_itemised(self):
+        """'List all my sales' with no timeframe stated must still default to
+        'today' (not null/other), same default the plain summary path uses."""
+        result = self._parse("List all my sales")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "today")
+        self.assertEqual(result.detail_level, "itemised")
+
+    def test_how_much_did_i_make_today_is_not_itemised(self):
+        """An ordinary totals question must default to a summary
+        (detail_level=None), not itemised — itemised is opt-in only."""
+        result = self._parse("How much did I make today?")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertIsNone(result.detail_level)
+
+    def test_itemised_over_a_rolling_days_window(self):
+        """Regression for Brighton's second review on #425: the duplicate
+        sales_query prompt section (now removed) only knew about
+        today/yesterday/week/month/year, missing the "days"/"weeks" rolling
+        windows #414 added. "Show me everything I sold the past 2 days"
+        must resolve to timeframe "days", period_count 2, AND
+        detail_level "itemised" — all three correct from the single,
+        merged prompt section."""
+        result = self._parse("Show me everything I sold the past 2 days")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "days")
+        self.assertEqual(result.period_count, 2)
+        self.assertEqual(result.detail_level, "itemised")
+
+    def test_shona_show_everything_sold_today_is_itemised(self):
+        """'Ndatengesei zvese nhasi' (show me everything I sold today) — same
+        itemised request, in Shona."""
+        result = self._parse("Ndatengesei zvese nhasi")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "today")
+        self.assertEqual(result.detail_level, "itemised")
+
+    def test_shona_summary_question_is_not_itemised(self):
+        """'Nditaurire zvandatengesa vhiki rino' (tell me what I sold this week)
+        is an ordinary summary question in Shona, not itemised."""
+        result = self._parse("Nditaurire zvandatengesa vhiki rino")
+        self.assertEqual(result.intent, "sales_query")
+        self.assertEqual(result.timeframe, "week")
+        self.assertIsNone(result.detail_level)
