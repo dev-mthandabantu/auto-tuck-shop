@@ -501,8 +501,9 @@ async def _handle_sales_query(
             timeframe, getattr(result, "period_count", None), today, force_range=True, lang=lang
         )
         start, end, label = period
-        data = await _s2a(build_itemised_sales_list, thread_sensitive=True)(company, start, end)
-        await _send_response(sender, format_itemised_sales_list(label, data, lang=lang))
+        product_filter = getattr(result, "product_filter", None)
+        data = await _s2a(build_itemised_sales_list, thread_sensitive=True)(company, start, end, product_filter)
+        await _send_response(sender, format_itemised_sales_list(label, data, lang=lang, product_filter=product_filter))
         return
 
     # Multi-day aggregates (and any profit question) — return text only, no image card

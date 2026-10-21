@@ -120,6 +120,7 @@
     },
     "itemised_sales": {
         "no_sales": "No sales recorded for {period}.",
+        "no_sales_for_product": "No sales of {product} recorded for {period}.",
         "heading": "{period}:",
         "item_line": "  • {product} x {quantity}, {price}",
         "no_price": "—",

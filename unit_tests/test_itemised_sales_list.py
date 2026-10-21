@@ -249,3 +249,74 @@ class FormatItemisedSalesListTest(TestCase):
         data = build_itemised_sales_list(self.company, self.today, self.today)
         text = format_itemised_sales_list("today", data, lang="sn")
         self.assertIn("Hapana zvatengeswa", text)
+
+
+class ProductFilterTest(TestCase):
+    """Regression for #436: "show me all the bread I sold this week" must
+    only return bread, not every product the shop sold."""
+
+    def setUp(self):
+        self.company = _make_company()
+        self.today = timezone.localdate()
+
+    def test_filter_returns_only_the_matching_product(self):
+        bread = _make_product(self.company, "Bread")
+        book = _make_product(self.company, "Book")
+        _make_confirmed_sale(self.company, [(bread, 2, Decimal("1.00"), "USD")], when=timezone.now())
+        _make_confirmed_sale(self.company, [(book, 1, Decimal("5.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="bread")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Bread")
+        self.assertEqual(data["sales_count"], 1)
+
+    def test_filter_is_case_insensitive_substring_match(self):
+        bread = _make_product(self.company, "White Bread")
+        _make_confirmed_sale(self.company, [(bread, 1, Decimal("1.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="BREAD")
+
+        self.assertEqual(len(data["entries"]), 1)
+
+    def test_filter_excludes_other_products_in_a_mixed_sale(self):
+        """A single sale can contain several products ("2 bread and 3
+        coke") — the query-level filter only narrows which SALES are
+        included; the unrelated line within a matching sale must still be
+        excluded."""
+        bread = _make_product(self.company, "Bread")
+        coke = _make_product(self.company, "Coke")
+        _make_confirmed_sale(
+            self.company,
+            [(bread, 2, Decimal("1.00"), "USD"), (coke, 3, Decimal("1.00"), "USD")],
+            when=timezone.now(),
+        )
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="bread")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Bread")
+
+    def test_filter_matching_nothing_gives_a_clear_message_not_everything(self):
+        bread = _make_product(self.company, "Bread")
+        _make_confirmed_sale(self.company, [(bread, 2, Decimal("1.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="samosa")
+        text = format_itemised_sales_list("today", data, lang="en", product_filter="samosa")
+
+        self.assertEqual(data["sales_count"], 0)
+        self.assertIn("samosa", text.lower())
+        self.assertNotIn("Bread", text)
+
+    def test_no_filter_still_returns_everything(self):
+        """Regression check: adding the filter parameter must not change
+        behaviour when no filter is given — the existing unfiltered tests
+        in this file must keep passing unmodified."""
+        bread = _make_product(self.company, "Bread")
+        book = _make_product(self.company, "Book")
+        _make_confirmed_sale(self.company, [(bread, 1, Decimal("1.00"), "USD")], when=timezone.now())
+        _make_confirmed_sale(self.company, [(book, 1, Decimal("5.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today)
+
+        self.assertEqual(len(data["entries"]), 2)

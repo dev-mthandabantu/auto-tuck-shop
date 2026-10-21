@@ -600,24 +600,36 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
     }
 
 
-def build_itemised_sales_list(company: Company, start_date: dt.date, end_date: dt.date) -> dict:
+def build_itemised_sales_list(
+    company: Company, start_date: dt.date, end_date: dt.date, product_filter: str | None = None,
+) -> dict:
     """Every product sold in a date range, grouped by product and sorted by
     quantity (#408 — per Brighton's review, grouped rather than one line per
     individual sale: a per-sale view hit the 20-line display limit almost
     immediately for a week-long query, and owners asked "how much of each
     did I sell", which is inherently a grouped question). Kept as plain
     dicts, not formatted text, so the same data can later feed a dashboard
-    view, not just a WhatsApp message."""
+    view, not just a WhatsApp message.
+
+    product_filter (#436): narrows to one product, e.g. "show me all the
+    bread I sold this week". A case-insensitive substring match against the
+    product name — the LLM has already extracted the name from the owner's
+    own words, so this doesn't need its own fuzzy-matching logic, matching
+    the "exclude, don't validate" pattern used elsewhere in this file.
+    Filtered at the query level (not after grouping) so sales_count and
+    currency_totals reflect only the matching product too, not the whole
+    shop's activity for the period."""
     start = timezone.make_aware(datetime.combine(start_date, time.min))
     end = timezone.make_aware(datetime.combine(end_date, time.max))
-    sales = list(
-        Sale.objects.filter(
-            company=company,
-            status=Sale.Status.CONFIRMED,
-            sale_timestamp__gte=start,
-            sale_timestamp__lte=end,
-        ).prefetch_related("items__product")
+    sales_qs = Sale.objects.filter(
+        company=company,
+        status=Sale.Status.CONFIRMED,
+        sale_timestamp__gte=start,
+        sale_timestamp__lte=end,
     )
+    if product_filter:
+        sales_qs = sales_qs.filter(items__product__name__icontains=product_filter).distinct()
+    sales = list(sales_qs.prefetch_related("items__product"))
     # Grouped by (product, currency), not product alone — shops here take
     # USD, rand and ZiG in the same day, so $3 of bread and R20 of bread
     # must stay as two separate lines, never summed as one "$23" total
@@ -627,6 +639,8 @@ def build_itemised_sales_list(company: Company, start_date: dt.date, end_date: d
     currency_totals: dict[str, Decimal] = {}
     for sale in sales:
         for item in sale.items.all():
+            if product_filter and product_filter.lower() not in item.product.name.lower():
+                continue
             key = (item.product.name, item.currency)
             entry = products.setdefault(key, {
                 "product": item.product.name, "quantity": 0, "revenue": Decimal("0.00"), "currency": item.currency,
@@ -651,7 +665,9 @@ def build_itemised_sales_list(company: Company, start_date: dt.date, end_date: d
 MAX_ITEMISED_LINES = 20
 
 
-def format_itemised_sales_list(period_label: str, data: dict, lang: str | None = None) -> str:
+def format_itemised_sales_list(
+    period_label: str, data: dict, lang: str | None = None, product_filter: str | None = None,
+) -> str:
     from apps.whatsapp.services.webhook_handler import t, DEFAULT_LANGUAGE
 
     lang = lang or DEFAULT_LANGUAGE
@@ -663,6 +679,11 @@ def format_itemised_sales_list(period_label: str, data: dict, lang: str | None =
         period_label = period_label[0].lower() + period_label[1:]
 
     if data["sales_count"] == 0:
+        # #436: a filter that matched nothing gets a message naming the
+        # product, not a generic "no sales" that reads as if the owner sold
+        # nothing at all that period.
+        if product_filter:
+            return t("itemised_sales.no_sales_for_product", lang=lang, period=period_label, product=product_filter)
         return t("itemised_sales.no_sales", lang=lang, period=period_label)
 
     lines = [t("itemised_sales.heading", lang=lang, period=period_label)]

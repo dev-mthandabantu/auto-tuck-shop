@@ -120,6 +120,7 @@
     },
     "itemised_sales": {
         "no_sales": "Hapana zvatengeswa {period}.",
+        "no_sales_for_product": "Hapana {product} yakatengeswa {period}.",
         "heading": "Zvawatengesa {period}:",
         "item_line": "  • {product} x {quantity}, {price}",
         "no_price": "—",
