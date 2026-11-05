@@ -121,6 +121,7 @@
     "itemised_sales": {
         "no_sales": "Hapana zvatengeswa {period}.",
         "no_sales_for_product": "Hapana {product} yakatengeswa {period}.",
+        "product_filter_not_found": "Handina kuwana chinhu chinoenderana ne \"{product}\". Edza \"ndiratidze zvese zvandatengesa {period}\" kuti uone zvese.",
         "heading": "Zvawatengesa {period}:",
         "item_line": "  • {product} x {quantity}, {price}",
         "no_price": "—",

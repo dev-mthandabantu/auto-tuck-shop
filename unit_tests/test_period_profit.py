@@ -390,6 +390,25 @@ class QueryRoutingTest(TransactionTestCase):
         text = send.await_args.args[1]
         self.assertIn("Only the shop owner can see profit", text)
 
+    def test_product_filter_reaches_the_itemised_list_through_the_real_call_site(self):
+        """Regression for Omar's review on #447: deleting the
+        `product_filter = getattr(result, "product_filter", None)` line (or
+        the argument it feeds into build_itemised_sales_list/
+        format_itemised_sales_list) at webhook_handler.py broke no existing
+        test — every other itemised test asks about everything, never a
+        specific product, through this real call site. Adds a second
+        product so an unfiltered reply would visibly differ from a filtered
+        one, then asserts on both ends of that difference."""
+        book = Product.objects.create(company=self.company, name="Book")
+        sale = Sale.objects.create(company=self.company, status=Sale.Status.CONFIRMED)
+        SaleItem.objects.create(sale=sale, product=book, quantity=1, unit_price=Decimal("5.00"), currency="USD")
+
+        send = self._ask(timeframe="today", detail_level="itemised", product_filter="bread")
+
+        text = send.await_args.args[1]
+        self.assertIn("Bread", text)
+        self.assertNotIn("Book", text)
+
 
 class ParserQueryFieldsTest(TestCase):
     def _parse(self, response):

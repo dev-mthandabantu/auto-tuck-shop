@@ -121,6 +121,7 @@
     "itemised_sales": {
         "no_sales": "No sales recorded for {period}.",
         "no_sales_for_product": "No sales of {product} recorded for {period}.",
+        "product_filter_not_found": "I couldn't find a product matching \"{product}\". Try \"show me everything I sold {period}\" to see the full list.",
         "heading": "{period}:",
         "item_line": "  • {product} x {quantity}, {price}",
         "no_price": "—",

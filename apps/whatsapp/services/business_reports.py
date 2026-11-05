@@ -20,7 +20,7 @@ from apps.catalog.models import Product
 from apps.core.currencies import DEFAULT_CURRENCY, format_price
 from apps.core.models import Company, UserProfile
 from apps.sales.models import Sale, SaleItem
-from apps.sales.services import summarize_profit
+from apps.sales.services import _singular_plural_variants, summarize_profit
 from apps.inventory.models import InventoryAdjustment
 from apps.whatsapp.models import WhatsAppMessage
 from apps.whatsapp.services.whatsapp_client import get_whatsapp_client
@@ -600,6 +600,44 @@ def build_period_summary(company: Company, start_date: datetime.date, end_date: 
     }
 
 
+def _catalog_name_query(product_filter: str, field_path: str = "name") -> models.Q:
+    """Build the OR'd icontains Q object for `product_filter` and its
+    singular/plural variants, against `field_path` (a Django lookup path
+    ending in a name field, e.g. "name" for a direct Product queryset, or
+    "items__product__name" through a Sale queryset's relation) — shared by
+    the sales query-level filter and the catalog-existence check below
+    (#447 review — Omar's code note: one place generates this condition, so
+    a future change to the matching rule can't update one call site and
+    miss the other)."""
+    filter_candidates = [product_filter] + _singular_plural_variants(product_filter)
+    name_query = models.Q()
+    lookup = f"{field_path}__icontains"
+    for candidate in filter_candidates:
+        name_query |= models.Q(**{lookup: candidate})
+    return name_query
+
+
+def _product_name_matches_filter(product_name: str, product_filter: str) -> bool:
+    """Case-insensitive substring match against a product name OR any of its
+    singular/plural variants (#447 review — Omar). A plain substring check
+    alone misses an owner asking in the opposite form from how the product
+    was saved: a shop with "Egg" (singular, however the owner first typed
+    it) asked about in the plural ("how much eggs did I sell") would
+    otherwise get told "No sales of eggs" despite having sold plenty — worse
+    than main's pre-#436 behaviour, which at least showed everything. Tried
+    against the filter's own variants (not the product name's) since the
+    filter is the shorter, LLM-extracted side of the match; checking it
+    against _singular_plural_variants(product_name) instead would also work
+    but is less intuitive to read at the call site.
+
+    Used identically at both the query level and the per-item level in
+    build_itemised_sales_list — kept as one function (Omar's #447 review
+    code note) so the two checks can't drift out of step."""
+    lower_name = product_name.lower()
+    candidates = [product_filter] + _singular_plural_variants(product_filter)
+    return any(candidate.lower() in lower_name for candidate in candidates)
+
+
 def build_itemised_sales_list(
     company: Company, start_date: dt.date, end_date: dt.date, product_filter: str | None = None,
 ) -> dict:
@@ -628,7 +666,13 @@ def build_itemised_sales_list(
         sale_timestamp__lte=end,
     )
     if product_filter:
-        sales_qs = sales_qs.filter(items__product__name__icontains=product_filter).distinct()
+        # OR'd across the filter and its singular/plural variants (#447
+        # review — Omar), so a plural question ("eggs") still finds a
+        # product saved singular ("Egg") instead of narrowing to zero sales
+        # at the query level before the per-item check even runs.
+        sales_qs = sales_qs.filter(
+            _catalog_name_query(product_filter, field_path="items__product__name")
+        ).distinct()
     sales = list(sales_qs.prefetch_related("items__product"))
     # Grouped by (product, currency), not product alone — shops here take
     # USD, rand and ZiG in the same day, so $3 of bread and R20 of bread
@@ -639,7 +683,7 @@ def build_itemised_sales_list(
     currency_totals: dict[str, Decimal] = {}
     for sale in sales:
         for item in sale.items.all():
-            if product_filter and product_filter.lower() not in item.product.name.lower():
+            if product_filter and not _product_name_matches_filter(item.product.name, product_filter):
                 continue
             key = (item.product.name, item.currency)
             entry = products.setdefault(key, {
@@ -653,10 +697,26 @@ def build_itemised_sales_list(
                     + item.unit_price * item.quantity
                 )
     entries = sorted(products.values(), key=lambda e: (-e["quantity"], e["product"]))
+
+    # #447 review (Omar): a filter matching zero sales is ambiguous between
+    # "the shop genuinely sold none of this" and "the bot doesn't recognise
+    # this product at all" (a typo, an unrecognised word like "mazai" for
+    # "eggs", or a multi-product phrase like "bread and coke" the LLM
+    # sometimes returns as a single product_filter string). Checked against
+    # the company's active catalog, not just this period's sales, so the
+    # distinction holds even when the product exists but genuinely had zero
+    # sales in the requested period.
+    product_filter_known = True
+    if product_filter and not entries:
+        product_filter_known = Product.objects.filter(active=True, company=company).filter(
+            _catalog_name_query(product_filter)
+        ).exists()
+
     return {
         "entries": entries,
         "currency_totals": currency_totals,
         "sales_count": len(sales),
+        "product_filter_known": product_filter_known,
     }
 
 
@@ -681,9 +741,17 @@ def format_itemised_sales_list(
     if data["sales_count"] == 0:
         # #436: a filter that matched nothing gets a message naming the
         # product, not a generic "no sales" that reads as if the owner sold
-        # nothing at all that period.
-        if product_filter:
+        # nothing at all that period — but only when the shop actually has
+        # a product matching the filter (#447 review — Omar). Otherwise the
+        # bot doesn't recognise the filter itself (a typo, an unrecognised
+        # word, or a multi-product phrase), and claiming "no sales of X"
+        # would misrepresent not-understanding as a real, checked fact —
+        # say the bot couldn't find it instead, matching this repo's
+        # "ask, don't guess" rule rather than asserting a fact it can't back.
+        if product_filter and data.get("product_filter_known", True):
             return t("itemised_sales.no_sales_for_product", lang=lang, period=period_label, product=product_filter)
+        if product_filter:
+            return t("itemised_sales.product_filter_not_found", lang=lang, period=period_label, product=product_filter)
         return t("itemised_sales.no_sales", lang=lang, period=period_label)
 
     lines = [t("itemised_sales.heading", lang=lang, period=period_label)]

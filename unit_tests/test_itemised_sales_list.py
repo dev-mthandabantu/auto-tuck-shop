@@ -320,3 +320,116 @@ class ProductFilterTest(TestCase):
         data = build_itemised_sales_list(self.company, self.today, self.today)
 
         self.assertEqual(len(data["entries"]), 2)
+
+    # ------------------------------------------------------------------
+    # #447 review (Omar): a plural question must still find a singular
+    # product name, and vice versa — a plain substring match alone told
+    # the owner "No sales of eggs" despite having sold plenty, saved as
+    # the singular "Egg". Worse than main's pre-#436 behaviour, which at
+    # least showed everything in this case.
+    # ------------------------------------------------------------------
+
+    def test_plural_filter_finds_singular_product(self):
+        """Product saved as "Egg" (singular); owner asks about "eggs"."""
+        egg = _make_product(self.company, "Egg")
+        _make_confirmed_sale(self.company, [(egg, 6, Decimal("0.20"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="eggs")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Egg")
+        self.assertEqual(data["sales_count"], 1)
+
+    def test_singular_filter_finds_plural_product(self):
+        """Product saved as "Bananas" (plural); owner asks about "banana"."""
+        bananas = _make_product(self.company, "Bananas")
+        _make_confirmed_sale(self.company, [(bananas, 3, Decimal("0.50"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="banana")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Bananas")
+
+    def test_plural_es_filter_finds_singular_product(self):
+        """Product saved as "Box" (singular, -es pluralization class);
+        owner asks about "boxes"."""
+        box = _make_product(self.company, "Box")
+        _make_confirmed_sale(self.company, [(box, 4, Decimal("1.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="boxes")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Box")
+
+    def test_plural_filter_does_not_also_match_an_unrelated_mixed_sale_item(self):
+        """Singular/plural matching must not widen the filter so far that
+        an unrelated product in the same mixed sale leaks through."""
+        egg = _make_product(self.company, "Egg")
+        coke = _make_product(self.company, "Coke")
+        _make_confirmed_sale(
+            self.company,
+            [(egg, 6, Decimal("0.20"), "USD"), (coke, 2, Decimal("1.00"), "USD")],
+            when=timezone.now(),
+        )
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="eggs")
+
+        self.assertEqual(len(data["entries"]), 1)
+        self.assertEqual(data["entries"][0]["product"], "Egg")
+
+    # ------------------------------------------------------------------
+    # #447 review (Omar), point 2: "No sales of X" must only be said when
+    # the shop actually has a product matching X — otherwise it misreports
+    # "the bot doesn't recognise X" as "the shop sold none of X".
+    # ------------------------------------------------------------------
+
+    def test_unrecognised_filter_says_not_found_not_no_sales(self):
+        """Shop has no product resembling "samosa" at all — must get a
+        "couldn't find" message, not a false "no sales of samosa"."""
+        bread = _make_product(self.company, "Bread")
+        _make_confirmed_sale(self.company, [(bread, 2, Decimal("1.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="samosa")
+        text = format_itemised_sales_list("today", data, lang="en", product_filter="samosa")
+
+        self.assertFalse(data["product_filter_known"])
+        self.assertIn("couldn't find", text.lower())
+        self.assertNotIn("No sales of samosa", text)
+
+    def test_recognised_filter_with_zero_sales_in_period_says_no_sales(self):
+        """Shop DOES have "Bread" in its catalog, but sold none this period
+        — this is a real, checked fact, so the normal "no sales of X"
+        message is correct here, not the "couldn't find" message."""
+        bread = _make_product(self.company, "Bread")
+        bread.active = True
+        bread.save()
+        # No sale recorded for "today" at all.
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="bread")
+        text = format_itemised_sales_list("today", data, lang="en", product_filter="bread")
+
+        self.assertTrue(data["product_filter_known"])
+        self.assertIn("No sales of bread", text)
+
+    def test_filter_matching_a_known_product_with_sales_does_not_check_catalog(self):
+        """When the filter actually matches sales, product_filter_known
+        must stay True without needing the extra catalog lookup — it's
+        only computed when entries come back empty, per the docstring's
+        stated intent, so this also guards against an unnecessary query."""
+        bread = _make_product(self.company, "Bread")
+        _make_confirmed_sale(self.company, [(bread, 2, Decimal("1.00"), "USD")], when=timezone.now())
+
+        data = build_itemised_sales_list(self.company, self.today, self.today, product_filter="bread")
+
+        self.assertTrue(data["product_filter_known"])
+
+    def test_no_filter_at_all_is_not_treated_as_unrecognised(self):
+        """With no product_filter given, the plain "no sales" message
+        must still show, never the "couldn't find" wording meant only for
+        an actual (non-empty) filter string."""
+        data = build_itemised_sales_list(self.company, self.today, self.today)
+        text = format_itemised_sales_list("today", data, lang="en")
+
+        self.assertTrue(data["product_filter_known"])
+        self.assertIn("No sales recorded", text)
+        self.assertNotIn("couldn't find", text.lower())
